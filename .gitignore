@@ -1,0 +1,6 @@
+.env
+orders.yaml
+logs/
+__pycache__/
+*.pyc
+.venv/

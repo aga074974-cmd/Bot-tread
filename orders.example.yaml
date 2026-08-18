@@ -1,0 +1,24 @@
+# Copy this file to orders.yaml and edit.
+# Times are in Asia/Tehran local time, format "YYYY-MM-DD HH:MM" or "YYYY-MM-DD HH:MM:SS".
+orders:
+  - symbol: "مثقال"
+    # symbol_id: ""      # fill in once we know Mofid's internal symbol/ISIN code
+    side: buy
+    quantity: 200
+    order_type: market
+    at: "2026-08-19 13:30"
+
+  - symbol: "دارونو"
+    # symbol_id: ""
+    side: buy
+    quantity: 80
+    order_type: market
+    at: "2026-08-19 11:00"
+
+  # Example of a limit order:
+  # - symbol: "دارونو"
+  #   side: sell
+  #   quantity: 50
+  #   order_type: limit
+  #   price: 32800
+  #   at: "2026-08-20 10:15"
