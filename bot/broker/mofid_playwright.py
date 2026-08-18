@@ -16,17 +16,24 @@ PASSWORD_PLACEHOLDER = "کلمه عبور"
 LOGIN_BUTTON_TEXT = "ورود"
 
 # ---------------------------------------------------------------------------
-# NOT FILLED IN YET — order-screen selectors are guesses until we see real
-# screenshots of the order ticket. Update these before using DRY_RUN=false.
+# Filled in from real screenshots of the order ticket, except where noted.
+# The quantity/price fields *look* like placeholders in the screenshot but
+# could turn out to be separate floating labels once tested live — if
+# place_order() fails, check logs/screenshots/<id>_form_filled (or the
+# _error shot) to see exactly how far it got.
 # ---------------------------------------------------------------------------
-SYMBOL_SEARCH_PLACEHOLDER = "جستجو"
-BUY_TAB_TEXT = "خرید"
-SELL_TAB_TEXT = "فروش"
+SEARCH_TAB_TEXT = "جستجو"  # bottom nav tab that reveals the symbol search box
+SYMBOL_SEARCH_PLACEHOLDER = "جستجوی نماد"
+BUY_BUTTON_TEXT = "خرید"
+SELL_BUTTON_TEXT = "فروش"
 QUANTITY_PLACEHOLDER = "تعداد"
 PRICE_PLACEHOLDER = "قیمت"
-SUBMIT_BUTTON_TEXT = "ارسال سفارش"
 CONFIRM_BUTTON_TEXT = "تایید"
-SUCCESS_TEXT = "با موفقیت"
+SUCCESS_TEXT = "با موفقیت"  # unverified — not seen in captured screenshots yet
+
+
+def _submit_button_text(side: Side) -> str:
+    return "ارسال خرید" if side == Side.BUY else "ارسال فروش"
 
 
 class MofidPlaywrightClient(BrokerClient):
@@ -84,17 +91,20 @@ class MofidPlaywrightClient(BrokerClient):
         assert self._page is not None
         page = self._page
 
-        # TODO: verify these steps against the real order screen.
+        await page.get_by_text(SEARCH_TAB_TEXT, exact=True).click()
         await page.get_by_placeholder(SYMBOL_SEARCH_PLACEHOLDER).fill(order.symbol)
         await self._screenshot(f"{order.id}_search")
         await page.get_by_text(order.symbol, exact=False).first.click()
         await self._screenshot(f"{order.id}_symbol_page")
 
-        tab_text = BUY_TAB_TEXT if order.side == Side.BUY else SELL_TAB_TEXT
-        await page.get_by_text(tab_text, exact=True).click()
+        side_button_text = BUY_BUTTON_TEXT if order.side == Side.BUY else SELL_BUTTON_TEXT
+        await page.get_by_text(side_button_text, exact=True).click()
+        await self._screenshot(f"{order.id}_ticket_opened")
 
         await page.get_by_placeholder(QUANTITY_PLACEHOLDER).fill(str(order.quantity))
         if order.order_type == OrderType.LIMIT:
+            # Market orders leave the price field at its pre-filled last-trade
+            # price; only override it for an explicit limit price.
             await page.get_by_placeholder(PRICE_PLACEHOLDER).fill(str(order.price))
         await self._screenshot(f"{order.id}_form_filled")
 
@@ -109,7 +119,7 @@ class MofidPlaywrightClient(BrokerClient):
             )
             return f"dry-run-{order.id}"
 
-        await page.get_by_text(SUBMIT_BUTTON_TEXT, exact=True).click()
+        await page.get_by_text(_submit_button_text(order.side), exact=True).click()
         await self._screenshot(f"{order.id}_after_submit")
 
         confirm_btn = page.get_by_text(CONFIRM_BUTTON_TEXT, exact=True)
