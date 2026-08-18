@@ -1,0 +1,21 @@
+[Unit]
+Description=Mofid EasyTrader order panel (web UI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mofidbot
+WorkingDirectory=/opt/mofid-bot
+EnvironmentFile=/opt/mofid-bot/.env
+ExecStart=/opt/mofid-bot/.venv/bin/uvicorn panel.main:app --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/mofid-bot
+
+[Install]
+WantedBy=multi-user.target

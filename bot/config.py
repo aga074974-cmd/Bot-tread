@@ -42,7 +42,7 @@ class Settings:
         )
 
 
-def _parse_datetime(value: str) -> datetime:
+def parse_tehran_datetime(value: str) -> datetime:
     naive = datetime.strptime(value, "%Y-%m-%d %H:%M:%S") if len(value) > 16 else datetime.strptime(value, "%Y-%m-%d %H:%M")
     return naive.replace(tzinfo=TEHRAN_TZ)
 
@@ -60,7 +60,7 @@ def load_orders(path: str | Path) -> list[Order]:
                 quantity=int(item["quantity"]),
                 order_type=OrderType(item.get("order_type", "market")),
                 price=item.get("price"),
-                scheduled_at=_parse_datetime(str(item["at"])),
+                scheduled_at=parse_tehran_datetime(str(item["at"])),
             )
         )
     return orders

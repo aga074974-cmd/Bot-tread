@@ -1,0 +1,126 @@
+<!doctype html>
+<html dir="rtl" lang="fa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>پنل ربات سفارش مفید</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 1rem; }
+  h1 { font-size: 1.2rem; }
+  .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .top a { color: #94a3b8; font-size: 0.85rem; text-decoration: none; }
+  .card { background: #1e293b; border-radius: 12px; padding: 1.2rem; margin-bottom: 1.2rem; }
+  .card h2 { font-size: 1rem; margin-top: 0; }
+  label { display: block; font-size: 0.85rem; color: #94a3b8; margin-top: 0.8rem; }
+  input, select { width: 100%; box-sizing: border-box; padding: 0.6rem; margin-top: 0.3rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 1rem; }
+  .row { display: flex; gap: 0.6rem; }
+  .row > div { flex: 1; }
+  button.submit { width: 100%; padding: 0.8rem; border: none; border-radius: 8px; background: #22c55e; color: #06210f; font-weight: bold; font-size: 1rem; margin-top: 1.2rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { padding: 0.5rem; text-align: right; border-bottom: 1px solid #334155; }
+  .badge { padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.75rem; }
+  .pending { background: #334155; color: #cbd5e1; }
+  .sent { background: #14532d; color: #86efac; }
+  .failed { background: #450a0a; color: #fca5a5; }
+  .skipped { background: #422006; color: #fdba74; }
+  form.inline { display: inline; }
+  .cancel-btn { background: none; border: 1px solid #475569; color: #94a3b8; border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.75rem; }
+  .empty { color: #64748b; font-size: 0.85rem; }
+  .flash { background: #14532d; color: #86efac; padding: 0.6rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; }
+  .flash.error { background: #450a0a; color: #fca5a5; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>پنل ربات سفارش مفید</h1>
+  <a href="/logout">خروج</a>
+</div>
+
+{% if flash %}<div class="flash {{ 'error' if flash_error else '' }}">{{ flash }}</div>{% endif %}
+
+<div class="card">
+  <h2>سفارش جدید</h2>
+  <form method="post" action="/orders">
+    <label>نماد</label>
+    <input type="text" name="symbol" required placeholder="مثلاً دارونو">
+
+    <div class="row">
+      <div>
+        <label>نوع</label>
+        <select name="side">
+          <option value="buy">خرید</option>
+          <option value="sell">فروش</option>
+        </select>
+      </div>
+      <div>
+        <label>تعداد</label>
+        <input type="number" name="quantity" min="1" required>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>نوع سفارش</label>
+        <select name="order_type" onchange="document.getElementById('price-field').style.display = this.value === 'limit' ? 'block' : 'none'">
+          <option value="market">بازار (قیمت پیش‌فرض)</option>
+          <option value="limit">قیمت مشخص</option>
+        </select>
+      </div>
+      <div id="price-field" style="display:none">
+        <label>قیمت</label>
+        <input type="number" name="price" min="1">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>تاریخ (میلادی، به‌وقت تهران)</label>
+        <input type="date" name="date" required>
+      </div>
+      <div>
+        <label>ساعت</label>
+        <input type="time" name="time" required>
+      </div>
+    </div>
+
+    <button class="submit" type="submit">افزودن سفارش</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>سفارش‌ها</h2>
+  {% if orders %}
+  <table>
+    <tr>
+      <th>نماد</th>
+      <th>نوع</th>
+      <th>تعداد</th>
+      <th>زمان</th>
+      <th>وضعیت</th>
+      <th></th>
+    </tr>
+    {% for o in orders %}
+    <tr>
+      <td>{{ o.symbol }}</td>
+      <td>{{ 'خرید' if o.side == 'buy' else 'فروش' }}{{ ' (قیمت‌دار)' if o.order_type == 'limit' else '' }}</td>
+      <td>{{ o.quantity }}</td>
+      <td>{{ o.scheduled_at_local }}</td>
+      <td><span class="badge {{ o.status }}">{{ o.status_fa }}</span></td>
+      <td>
+        {% if o.status == 'pending' %}
+        <form class="inline" method="post" action="/orders/{{ o.id }}/cancel">
+          <button class="cancel-btn" type="submit">لغو</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty">هنوز سفارشی ثبت نشده.</div>
+  {% endif %}
+</div>
+
+</body>
+</html>

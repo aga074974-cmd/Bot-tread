@@ -34,6 +34,7 @@ class Order:
     price: int | None = None
     symbol_id: str | None = None
     status: OrderStatus = OrderStatus.PENDING
+    ticket_id: str | None = None
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     def __post_init__(self) -> None:

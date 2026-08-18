@@ -24,14 +24,16 @@ async def main() -> None:
     if settings.dry_run:
         log.warning("DRY_RUN is enabled: no real orders will be sent. Set DRY_RUN=false in .env to go live.")
 
-    broker = MofidPlaywrightClient(
-        username=settings.username,
-        password=settings.password,
-        dry_run=settings.dry_run,
-        headless=settings.headless,
-    )
+    def broker_factory() -> MofidPlaywrightClient:
+        return MofidPlaywrightClient(
+            username=settings.username,
+            password=settings.password,
+            dry_run=settings.dry_run,
+            headless=settings.headless,
+        )
+
     await run_all(
-        broker,
+        broker_factory,
         orders,
         grace_period_seconds=settings.grace_period_seconds,
         max_retries=settings.max_retries,
