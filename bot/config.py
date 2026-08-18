@@ -20,6 +20,7 @@ class Settings:
     username: str
     password: str
     dry_run: bool
+    headless: bool
     grace_period_seconds: int
     max_retries: int
     retry_delay_seconds: float
@@ -28,11 +29,13 @@ class Settings:
     def load(cls) -> "Settings":
         load_dotenv()
         dry_run_raw = os.getenv("DRY_RUN", "true").strip().lower()
+        headless_raw = os.getenv("HEADLESS", "true").strip().lower()
         return cls(
             base_url=os.getenv("MOFID_BASE_URL", ""),
             username=os.getenv("MOFID_USERNAME", ""),
             password=os.getenv("MOFID_PASSWORD", ""),
             dry_run=dry_run_raw not in ("false", "0", "no"),
+            headless=headless_raw not in ("false", "0", "no"),
             grace_period_seconds=int(os.getenv("GRACE_PERIOD_SECONDS", "120")),
             max_retries=int(os.getenv("MAX_RETRIES", "5")),
             retry_delay_seconds=float(os.getenv("RETRY_DELAY_SECONDS", "2")),

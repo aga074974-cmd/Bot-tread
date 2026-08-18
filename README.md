@@ -6,10 +6,12 @@
 
 ## ⚠️ نکات مهم قبل از استفاده
 
-- **API رسمی و مستندسازی‌شده‌ای از مفید در دسترس نبود.** لایه‌ی اتصال به کارگزاری
-  (`bot/broker/mofid.py`) روی endpointهای واقعی وب‌اپ `m.easytrader.ir` کار می‌کنه که
-  باید با گرفتن ترافیک شبکه از مرورگر (DevTools → Network) استخراج بشن. تا وقتی
-  این کار انجام نشه، فایل مربوطه هیچ درخواست واقعی‌ای نمی‌زنه.
+- **API رسمی و مستندسازی‌شده‌ای از مفید در دسترس نبود.** بک‌اند واقعی ایزی‌تریدر
+  (`api-mts.orbis.easytrader.ir`) از OAuth2/PKCE (از طریق `login.emofid.com`) برای
+  ورود استفاده می‌کنه که شبیه‌سازیش با درخواست HTTP ساده سخته. به همین خاطر ربات
+  به‌جای زدن درخواست خام، از **خودکارسازی مرورگر (Playwright)** استفاده می‌کنه:
+  دقیقاً همون کاری که با انگشت روی سایت انجام می‌دی رو ربات با کد تکرار می‌کنه
+  (`bot/broker/mofid_playwright.py`).
 - استفاده‌ی خودکار از یک اپ ریتیل (به‌جای API رسمی معاملات الگوریتمی) ممکنه با
   قوانین استفاده‌ی کارگزاری مفید در تناقض باشه و در بدترین حالت باعث مسدود شدن
   حساب بشه. مسئولیت این ریسک با کاربره.
@@ -19,11 +21,20 @@
 
 ## تکمیل اتصال به مفید
 
-1. در مرورگر وارد `login.emofid.com` بشو، Developer Tools (F12) → تب Network رو باز کن.
-2. یک‌بار لاگین کن، درخواست لاگین رو با «Copy as cURL» کپی کن.
-3. یک سفارش آزمایشی (حجم خیلی کم) ثبت کن، درخواست ثبت سفارش رو هم کپی کن.
-4. با این دو درخواست، `LOGIN_PATH`/`ORDER_PATH` و بدنه‌ی درخواست‌ها رو در
-   `bot/broker/mofid.py` تکمیل کن (یا این اطلاعات رو در اختیار توسعه‌دهنده بذار).
+فرم ورود (username/password placeholder + دکمه‌ی «ورود») از قبل در
+`bot/broker/mofid_playwright.py` پیاده شده. آنچه هنوز نیاز به تکمیل داره،
+**صفحه‌ی ثبت سفارش** است — چون هنوز selectorهای واقعیش رو ندیدیم:
+
+1. توی سایت، یه نماد رو باز کن و فرم خرید/فروش (تعداد + دکمه‌ی ثبت سفارش) رو
+   ببین — از این صفحه اسکرین‌شات بگیر یا متن دقیق برچسب‌ها/placeholderها رو یادداشت کن.
+2. اگه بعد از ثبت یه پنجره‌ی تایید نهایی میاد، اونم مستند کن.
+3. با این اطلاعات، ثابت‌های بالای `bot/broker/mofid_playwright.py`
+   (`SYMBOL_SEARCH_PLACEHOLDER`, `BUY_TAB_TEXT`, `QUANTITY_PLACEHOLDER`,
+   `SUBMIT_BUTTON_TEXT`, `CONFIRM_BUTTON_TEXT`, `SUCCESS_TEXT`) رو با متن واقعی
+   جایگزین کن.
+4. حتماً اول با `DRY_RUN=true` و `HEADLESS=false` تست کن (یه پنجره‌ی مرورگر واقعی
+   باز می‌شه و می‌تونی مرحله‌به‌مرحله ببینی ربات چیکار می‌کنه) قبل از فعال کردن
+   حالت واقعی.
 
 ## نصب
 
@@ -31,6 +42,7 @@
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+playwright install --with-deps chromium
 cp .env.example .env      # و مقادیرش رو پر کن
 cp orders.example.yaml orders.yaml   # و سفارش‌هات رو تعریف کن
 ```
@@ -53,6 +65,7 @@ sudo cp -r . /opt/mofid-bot
 cd /opt/mofid-bot
 sudo python3 -m venv .venv
 sudo .venv/bin/pip install -r requirements.txt
+sudo .venv/bin/playwright install --with-deps chromium
 sudo cp .env.example .env   # مقادیر واقعی رو بذار
 sudo cp orders.example.yaml orders.yaml  # سفارش‌های واقعی
 sudo mkdir -p logs && sudo chown -R mofidbot:mofidbot /opt/mofid-bot
