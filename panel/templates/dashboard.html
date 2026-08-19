@@ -59,20 +59,6 @@
       </div>
     </div>
 
-    <div class="row">
-      <div>
-        <label>نوع سفارش</label>
-        <select name="order_type" onchange="document.getElementById('price-field').style.display = this.value === 'limit' ? 'block' : 'none'">
-          <option value="market">بازار (قیمت پیش‌فرض)</option>
-          <option value="limit">قیمت مشخص</option>
-        </select>
-      </div>
-      <div id="price-field" style="display:none">
-        <label>قیمت</label>
-        <input type="number" name="price" min="1">
-      </div>
-    </div>
-
     <label>تاریخ (شمسی، به‌وقت تهران)</label>
     <div class="row">
       <div>
@@ -120,7 +106,7 @@
     {% for o in orders %}
     <tr>
       <td>{{ o.symbol }}</td>
-      <td>{{ 'خرید' if o.side == 'buy' else 'فروش' }}{{ ' (قیمت‌دار)' if o.order_type == 'limit' else '' }}</td>
+      <td>{{ 'خرید' if o.side == 'buy' else 'فروش' }}</td>
       <td>{{ o.quantity }}</td>
       <td>{{ o.scheduled_at_local }}</td>
       <td><span class="badge {{ o.status }}">{{ o.status_fa }}</span></td>

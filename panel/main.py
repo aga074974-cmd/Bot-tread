@@ -126,7 +126,6 @@ async def dashboard(request: Request):
                 "id": r["id"],
                 "symbol": r["symbol"],
                 "side": r["side"],
-                "order_type": r["order_type"],
                 "quantity": r["quantity"],
                 "scheduled_at_local": scheduled_at_local,
                 "status": r["status"],
@@ -162,8 +161,6 @@ async def create_order(
     symbol: str = Form(...),
     side: str = Form(...),
     quantity: int = Form(...),
-    order_type: str = Form(...),
-    price: int | None = Form(None),
     jalali_year: int = Form(...),
     jalali_month: int = Form(...),
     jalali_day: int = Form(...),
@@ -179,8 +176,7 @@ async def create_order(
             symbol=symbol.strip(),
             side=Side(side),
             quantity=quantity,
-            order_type=OrderType(order_type),
-            price=price if order_type == "limit" else None,
+            order_type=OrderType.MARKET,
             scheduled_at=scheduled_at,
         )
     except (ValueError, KeyError) as exc:
