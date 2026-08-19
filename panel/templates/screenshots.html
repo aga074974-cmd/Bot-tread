@@ -8,11 +8,14 @@
   * { box-sizing: border-box; }
   body { font-family: Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 1rem; }
   h1 { font-size: 1.2rem; }
-  .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
   .top a { color: #94a3b8; font-size: 0.85rem; text-decoration: none; }
-  .shot { background: #1e293b; border-radius: 12px; padding: 0.8rem; margin-bottom: 1.2rem; }
-  .shot h2 { font-size: 0.8rem; margin: 0 0 0.6rem; color: #94a3b8; font-weight: normal; word-break: break-all; }
-  .shot img { width: 100%; border-radius: 8px; display: block; }
+  .note { color: #64748b; font-size: 0.75rem; margin-bottom: 1.2rem; }
+  .run { background: #1e293b; border-radius: 12px; padding: 1rem; margin-bottom: 1.2rem; }
+  .run > h2 { font-size: 0.9rem; margin: 0 0 0.8rem; word-break: break-all; }
+  .shot { margin-bottom: 1rem; }
+  .shot h3 { font-size: 0.75rem; margin: 0 0 0.4rem; color: #94a3b8; font-weight: normal; }
+  .shot img { width: 100%; border-radius: 8px; display: block; border: 1px solid #334155; }
   .empty { color: #64748b; font-size: 0.85rem; }
 </style>
 </head>
@@ -21,12 +24,20 @@
   <h1>عکس‌های اشکال‌زدایی</h1>
   <a href="/">بازگشت به پنل</a>
 </div>
+<div class="note">عکس‌های هر سفارش جداگانه نگهداری می‌شود و پس از {{ retention_days }} روز خودکار پاک می‌شود.</div>
 
-{% if names %}
-  {% for name in names %}
-  <div class="shot">
-    <h2>{{ name }}</h2>
-    <a href="/screenshots/{{ name }}"><img src="/screenshots/{{ name }}" alt="{{ name }}" loading="lazy"></a>
+{% if runs %}
+  {% for run in runs %}
+  <div class="run">
+    <h2>{{ run.name }}</h2>
+    {% for shot in run.shots %}
+    <div class="shot">
+      <h3>{{ shot }}</h3>
+      <a href="/screenshots/{{ run.name }}/{{ shot }}">
+        <img src="/screenshots/{{ run.name }}/{{ shot }}" alt="{{ shot }}" loading="lazy">
+      </a>
+    </div>
+    {% endfor %}
   </div>
   {% endfor %}
 {% else %}

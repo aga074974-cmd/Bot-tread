@@ -7,7 +7,9 @@ import logging
 from bot.broker.mofid_playwright import MofidPlaywrightClient
 from bot.config import Settings, load_orders
 from bot.logging_setup import setup_logging
+from bot.models import Order
 from bot.scheduler import run_all
+from bot.screenshots import BASE_DIR, purge_old, run_dir
 
 log = logging.getLogger(__name__)
 
@@ -24,13 +26,16 @@ async def main() -> None:
     if settings.dry_run:
         log.warning("DRY_RUN is enabled: no real orders will be sent. Set DRY_RUN=false in .env to go live.")
 
-    def broker_factory() -> MofidPlaywrightClient:
+    purge_old(retention_days=settings.screenshot_retention_days)
+
+    def broker_factory(order: Order) -> MofidPlaywrightClient:
         return MofidPlaywrightClient(
             username=settings.username,
             password=settings.password,
             dry_run=settings.dry_run,
             headless=settings.headless,
             storage_state_path=settings.storage_state_path,
+            screenshot_dir=run_dir(BASE_DIR, f"{order.symbol}_{order.id}"),
         )
 
     await run_all(

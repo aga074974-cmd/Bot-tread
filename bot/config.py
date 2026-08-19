@@ -25,6 +25,7 @@ class Settings:
     max_retries: int
     retry_delay_seconds: float
     storage_state_path: str
+    screenshot_retention_days: int
 
     @classmethod
     def load(cls) -> "Settings":
@@ -41,6 +42,7 @@ class Settings:
             max_retries=int(os.getenv("MAX_RETRIES", "5")),
             retry_delay_seconds=float(os.getenv("RETRY_DELAY_SECONDS", "2")),
             storage_state_path=os.getenv("STORAGE_STATE_PATH", "auth_state.json"),
+            screenshot_retention_days=int(os.getenv("SCREENSHOT_RETENTION_DAYS", "3")),
         )
 
 

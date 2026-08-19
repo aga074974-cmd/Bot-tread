@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from bot.broker.base import BrokerClient, BrokerError
 from bot.models import Order, OrderType, Side
@@ -16,14 +17,19 @@ USERNAME_PLACEHOLDER = "کدملی/شماره‌همراه/شناسه‌ملی/�
 PASSWORD_PLACEHOLDER = "کلمه عبور"
 LOGIN_BUTTON_TEXT = "ورود"
 
+# The site is an Angular SPA behind an OAuth redirect, so nothing is on the
+# page at load time. Every step waits for its element rather than assuming
+# it's already there.
+PAGE_READY_TIMEOUT_MS = 45_000
+
 # ---------------------------------------------------------------------------
 # Filled in from real screenshots of the order ticket, except where noted.
 # The quantity/price fields *look* like placeholders in the screenshot but
 # could turn out to be separate floating labels once tested live — if
-# place_order() fails, check logs/screenshots/<id>_form_filled (or the
-# _error shot) to see exactly how far it got.
+# place_order() fails, check that run's folder under logs/screenshots/ to see
+# exactly how far it got.
 # ---------------------------------------------------------------------------
-SEARCH_TAB_TEXT = "جستجو"  # bottom nav tab that reveals the symbol search box
+SEARCH_TAB_TEXT = "جستجو"  # bottom nav tab; also our "we're logged in" marker
 SYMBOL_SEARCH_PLACEHOLDER = "جستجوی نماد"
 BUY_BUTTON_TEXT = "خرید"
 SELL_BUTTON_TEXT = "فروش"
@@ -44,7 +50,7 @@ class MofidPlaywrightClient(BrokerClient):
         password: str,
         dry_run: bool = True,
         headless: bool = True,
-        debug_screenshot_dir: str | None = "logs/screenshots",
+        screenshot_dir: str | Path | None = None,
         storage_state_path: str | None = "auth_state.json",
     ) -> None:
         self.username = username
@@ -55,7 +61,7 @@ class MofidPlaywrightClient(BrokerClient):
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
-        self._shot_dir = Path(debug_screenshot_dir) if debug_screenshot_dir else None
+        self._shot_dir = Path(screenshot_dir) if screenshot_dir else None
         self._shot_seq = 0
         self._storage_state_path = Path(storage_state_path) if storage_state_path else None
 
@@ -105,18 +111,41 @@ class MofidPlaywrightClient(BrokerClient):
         # reach the order screen and take verification screenshots. Only the
         # final submit/confirm click in place_order() is skipped in dry-run.
         await self._page.goto(LOGIN_URL)
-        await self._screenshot("login_page")
 
         username_field = self._page.get_by_placeholder(USERNAME_PLACEHOLDER)
-        if await username_field.count() == 0:
-            log.info("restored saved session, skipping credential login for %s", self.username)
-        else:
+        app_shell = self._page.get_by_text(SEARCH_TAB_TEXT, exact=True).first
+
+        # Wait for the SPA (and any OAuth redirect) to settle into one of two
+        # states before deciding anything. Checking straight after goto() reads
+        # an empty page and wrongly concludes the saved session is still valid.
+        try:
+            await username_field.or_(app_shell).first.wait_for(
+                state="visible", timeout=PAGE_READY_TIMEOUT_MS
+            )
+        except PlaywrightTimeoutError as exc:
+            await self._screenshot("login_stuck")
+            raise BrokerError(
+                "page never showed either the login form or the app — see the login_stuck screenshot"
+            ) from exc
+
+        await self._screenshot("login_page")
+
+        if await username_field.is_visible():
             await username_field.fill(self.username)
             await self._page.get_by_placeholder(PASSWORD_PLACEHOLDER).fill(self.password)
             await self._screenshot("login_filled")
-            await self._page.get_by_text(LOGIN_BUTTON_TEXT, exact=True).click()
-            await self._page.wait_for_url(f"{LOGIN_URL}**", timeout=30_000)
+            await self._page.get_by_role("button", name=LOGIN_BUTTON_TEXT, exact=True).click()
+            try:
+                await app_shell.wait_for(state="visible", timeout=PAGE_READY_TIMEOUT_MS)
+            except PlaywrightTimeoutError as exc:
+                await self._screenshot("login_failed")
+                raise BrokerError(
+                    "login did not reach the app — wrong credentials, or an extra step "
+                    "(OTP/agreement) is in the way; see the login_failed screenshot"
+                ) from exc
             log.info("logged in with credentials as %s", self.username)
+        else:
+            log.info("restored saved session, skipping credential login for %s", self.username)
 
         await self._screenshot("login_done")
         await self._save_storage_state()
@@ -125,33 +154,33 @@ class MofidPlaywrightClient(BrokerClient):
         try:
             return await self._do_place_order(order)
         except BrokerError:
-            await self._screenshot(f"{order.id}_error")
+            await self._screenshot("error")
             raise
         except Exception as exc:
-            await self._screenshot(f"{order.id}_error")
+            await self._screenshot("error")
             raise BrokerError(f"unexpected error placing order: {exc!r}") from exc
 
     async def _do_place_order(self, order: Order) -> str:
         assert self._page is not None
         page = self._page
 
-        await self._screenshot(f"{order.id}_landing")
-        await page.get_by_text(SEARCH_TAB_TEXT, exact=True).click()
+        await self._screenshot("landing")
+        await page.get_by_text(SEARCH_TAB_TEXT, exact=True).first.click()
         await page.get_by_placeholder(SYMBOL_SEARCH_PLACEHOLDER).fill(order.symbol)
-        await self._screenshot(f"{order.id}_search")
+        await self._screenshot("search")
         await page.get_by_text(order.symbol, exact=False).first.click()
-        await self._screenshot(f"{order.id}_symbol_page")
+        await self._screenshot("symbol_page")
 
         side_button_text = BUY_BUTTON_TEXT if order.side == Side.BUY else SELL_BUTTON_TEXT
-        await page.get_by_text(side_button_text, exact=True).click()
-        await self._screenshot(f"{order.id}_ticket_opened")
+        await page.get_by_text(side_button_text, exact=True).first.click()
+        await self._screenshot("ticket_opened")
 
         await page.get_by_placeholder(QUANTITY_PLACEHOLDER).fill(str(order.quantity))
         if order.order_type == OrderType.LIMIT:
             # Market orders leave the price field at its pre-filled last-trade
             # price; only override it for an explicit limit price.
             await page.get_by_placeholder(PRICE_PLACEHOLDER).fill(str(order.price))
-        await self._screenshot(f"{order.id}_form_filled")
+        await self._screenshot("form_filled")
 
         if self.dry_run:
             log.info(
@@ -164,19 +193,22 @@ class MofidPlaywrightClient(BrokerClient):
             )
             return f"dry-run-{order.id}"
 
-        await page.get_by_text(_submit_button_text(order.side), exact=True).click()
-        await self._screenshot(f"{order.id}_after_submit")
+        await page.get_by_text(_submit_button_text(order.side), exact=True).first.click()
+        await self._screenshot("after_submit")
 
-        confirm_btn = page.get_by_text(CONFIRM_BUTTON_TEXT, exact=True)
+        confirm_btn = page.get_by_text(CONFIRM_BUTTON_TEXT, exact=True).first
         if await confirm_btn.count() > 0:
             await confirm_btn.click()
-            await self._screenshot(f"{order.id}_after_confirm")
+            await self._screenshot("after_confirm")
 
         try:
-            await page.get_by_text(SUCCESS_TEXT).wait_for(timeout=10_000)
-        except Exception as exc:
-            await self._screenshot(f"{order.id}_error")
-            raise BrokerError(f"no success confirmation seen after submitting order: {exc}") from exc
+            await page.get_by_text(SUCCESS_TEXT).first.wait_for(timeout=15_000)
+        except PlaywrightTimeoutError as exc:
+            await self._screenshot("no_confirmation")
+            raise BrokerError(
+                "no success confirmation seen after submitting — check the "
+                "no_confirmation screenshot to see whether it actually went through"
+            ) from exc
 
         return f"submitted-{order.id}"
 

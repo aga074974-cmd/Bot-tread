@@ -5,7 +5,6 @@ import logging
 import os
 import secrets
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -17,6 +16,7 @@ from bot.config import Settings, TEHRAN_TZ, parse_tehran_datetime
 from bot.logging_setup import setup_logging
 from bot.models import Order, OrderStatus, OrderType, Side
 from bot.scheduler import run_order
+from bot.screenshots import BASE_DIR as SCREENSHOT_DIR, purge_old, run_dir
 from panel.db import OrderStore
 from panel.jalali import PERSIAN_MONTHS, current_jalali_year, jalali_to_gregorian_str, to_jalali_str, today_jalali_ymd
 
@@ -35,7 +35,6 @@ if not PANEL_PASSWORD:
 store = OrderStore(DB_PATH)
 templates = Jinja2Templates(directory="panel/templates")
 running_tasks: dict[str, asyncio.Task] = {}
-SCREENSHOT_DIR = Path("logs/screenshots")
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax")
@@ -48,13 +47,14 @@ STATUS_FA = {
 }
 
 
-def broker_factory() -> MofidPlaywrightClient:
+def broker_factory(order: Order) -> MofidPlaywrightClient:
     return MofidPlaywrightClient(
         username=settings.username,
         password=settings.password,
         dry_run=settings.dry_run,
         headless=settings.headless,
         storage_state_path=settings.storage_state_path,
+        screenshot_dir=run_dir(SCREENSHOT_DIR, f"{order.symbol}_{order.id}"),
     )
 
 
@@ -77,12 +77,21 @@ def schedule(order: Order) -> None:
     running_tasks[order.id] = task
 
 
+async def _purge_screenshots_periodically() -> None:
+    """Drop screenshot folders older than the retention window, then keep
+    checking twice a day so a long-running panel doesn't accumulate them."""
+    while True:
+        await asyncio.to_thread(purge_old, SCREENSHOT_DIR, settings.screenshot_retention_days)
+        await asyncio.sleep(12 * 3600)
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     if settings.dry_run:
         log.warning("DRY_RUN is enabled: orders will fill the form but not submit it.")
     for order in await store.pending():
         schedule(order)
+    asyncio.create_task(_purge_screenshots_periodically())
     log.info("panel started, %d pending order(s) rescheduled", len(running_tasks))
 
 
@@ -207,25 +216,41 @@ async def cancel_order(request: Request, order_id: str):
     return RedirectResponse("/", status_code=303)
 
 
-def _screenshot_names() -> list[str]:
+def _screenshot_runs() -> list[dict]:
+    """One entry per order run (newest first), each with its own shots."""
     if not SCREENSHOT_DIR.is_dir():
         return []
-    return sorted((p.name for p in SCREENSHOT_DIR.glob("*.png")), reverse=True)
+    runs = []
+    for folder in sorted(SCREENSHOT_DIR.iterdir(), reverse=True):
+        if not folder.is_dir():
+            continue
+        shots = sorted(p.name for p in folder.glob("*.png"))
+        if shots:
+            runs.append({"name": folder.name, "shots": shots})
+    return runs
+
+
+def _is_known_shot(run: str, name: str) -> bool:
+    return any(r["name"] == run and name in r["shots"] for r in _screenshot_runs())
 
 
 @app.get("/screenshots", response_class=HTMLResponse)
 async def screenshots(request: Request):
     if not require_auth(request):
         return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(request, "screenshots.html", {"names": _screenshot_names()})
+    return templates.TemplateResponse(
+        request,
+        "screenshots.html",
+        {"runs": _screenshot_runs(), "retention_days": settings.screenshot_retention_days},
+    )
 
 
-@app.get("/screenshots/{name}")
-async def screenshot_file(request: Request, name: str):
+@app.get("/screenshots/{run}/{name}")
+async def screenshot_file(request: Request, run: str, name: str):
     if not require_auth(request):
         return RedirectResponse("/login", status_code=303)
-    # Only serve names that actually appear in the directory listing, so a
-    # crafted path can never escape SCREENSHOT_DIR.
-    if name not in _screenshot_names():
+    # Only serve run/name pairs that actually appear in the directory listing,
+    # so a crafted path can never escape SCREENSHOT_DIR.
+    if not _is_known_shot(run, name):
         return RedirectResponse("/screenshots", status_code=303)
-    return FileResponse(SCREENSHOT_DIR / name, media_type="image/png")
+    return FileResponse(SCREENSHOT_DIR / run / name, media_type="image/png")

@@ -10,7 +10,7 @@ from bot.models import Order, OrderStatus
 
 log = logging.getLogger(__name__)
 
-BrokerFactory = Callable[[], BrokerClient]
+BrokerFactory = Callable[[Order], BrokerClient]
 StatusCallback = Callable[[Order], Awaitable[None]] | Callable[[Order], None] | None
 
 
@@ -60,7 +60,7 @@ async def run_order(
     while True:
         attempt += 1
         try:
-            async with broker_factory() as broker:
+            async with broker_factory(order) as broker:
                 ticket_id = await broker.place_order(order)
             order.status = OrderStatus.SENT
             order.ticket_id = ticket_id
