@@ -115,9 +115,20 @@ class MofidPlaywrightClient(BrokerClient):
         await self._save_storage_state()
 
     async def place_order(self, order: Order) -> str:
+        try:
+            return await self._do_place_order(order)
+        except BrokerError:
+            await self._screenshot(f"{order.id}_error")
+            raise
+        except Exception as exc:
+            await self._screenshot(f"{order.id}_error")
+            raise BrokerError(f"unexpected error placing order: {exc!r}") from exc
+
+    async def _do_place_order(self, order: Order) -> str:
         assert self._page is not None
         page = self._page
 
+        await self._screenshot(f"{order.id}_landing")
         await page.get_by_text(SEARCH_TAB_TEXT, exact=True).click()
         await page.get_by_placeholder(SYMBOL_SEARCH_PLACEHOLDER).fill(order.symbol)
         await self._screenshot(f"{order.id}_search")

@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
-from bot.broker.base import BrokerClient, BrokerError
+from bot.broker.base import BrokerClient
 from bot.models import Order, OrderStatus
 
 log = logging.getLogger(__name__)
@@ -67,10 +67,15 @@ async def run_order(
             log.info("order %s (%s %s x%s) submitted, ticket=%s", order.id, order.side.value, order.symbol, order.quantity, ticket_id)
             await _notify(on_status_change, order)
             return
-        except BrokerError as exc:
-            log.error("order %s attempt %s/%s failed: %s", order.id, attempt, max_retries, exc)
+        except Exception as exc:
+            # Broad on purpose: a Playwright locator timeout, a broker-level
+            # BrokerError, or anything else from place_order() must all still
+            # retry/fail/notify instead of silently killing this task (which
+            # would leave the order stuck at "pending" forever).
+            log.error("order %s attempt %s/%s failed: %r", order.id, attempt, max_retries, exc, exc_info=True)
             if attempt >= max_retries:
                 order.status = OrderStatus.FAILED
+                order.error = str(exc) or repr(exc)
                 log.error("order %s (%s) exhausted retries, giving up", order.id, order.symbol)
                 await _notify(on_status_change, order)
                 return

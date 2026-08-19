@@ -27,6 +27,7 @@
   form.inline { display: inline; }
   .cancel-btn { background: none; border: 1px solid #475569; color: #94a3b8; border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.75rem; }
   .empty { color: #64748b; font-size: 0.85rem; }
+  .err-detail { color: #fca5a5; font-size: 0.7rem; margin-top: 0.2rem; max-width: 160px; overflow-wrap: break-word; }
   .flash { background: #14532d; color: #86efac; padding: 0.6rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; }
   .flash.error { background: #450a0a; color: #fca5a5; }
 </style>
@@ -109,7 +110,10 @@
       <td>{{ 'خرید' if o.side == 'buy' else 'فروش' }}</td>
       <td>{{ o.quantity }}</td>
       <td>{{ o.scheduled_at_local }}</td>
-      <td><span class="badge {{ o.status }}">{{ o.status_fa }}</span></td>
+      <td>
+        <span class="badge {{ o.status }}">{{ o.status_fa }}</span>
+        {% if o.error %}<div class="err-detail">{{ o.error }}</div>{% endif %}
+      </td>
       <td>
         {% if o.status == 'pending' %}
         <form class="inline" method="post" action="/orders/{{ o.id }}/cancel">

@@ -57,7 +57,7 @@ def broker_factory() -> MofidPlaywrightClient:
 
 
 async def on_status_change(order: Order) -> None:
-    await store.update_status(order)
+    await store.update_status(order, error=order.error)
     running_tasks.pop(order.id, None)
 
 
@@ -130,6 +130,7 @@ async def dashboard(request: Request):
                 "scheduled_at_local": scheduled_at_local,
                 "status": r["status"],
                 "status_fa": STATUS_FA.get(r["status"], r["status"]),
+                "error": r["error"],
             }
         )
 
