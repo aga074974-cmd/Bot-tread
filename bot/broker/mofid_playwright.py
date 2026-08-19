@@ -94,6 +94,46 @@ class MofidPlaywrightClient(BrokerClient):
         self._storage_state_path.chmod(0o600)  # contains session cookies
         log.info("saved session to %s for next run", self._storage_state_path)
 
+    async def _type_into(self, field, value: str, what: str) -> None:
+        """Type a value the way a person would. The login inputs have their own
+        on-screen-keyboard widget, and such fields often ignore a programmatic
+        value set — real key events are what their JS listens for. Falls back to
+        fill() and verifies the value actually landed either way."""
+        await field.click()
+        await field.press_sequentially(value, delay=30)
+
+        if await field.input_value() == value:
+            return
+
+        log.warning("%s field did not take typed input, retrying with fill()", what)
+        await field.fill(value)
+        if await field.input_value() != value:
+            await self._screenshot("login_input_rejected")
+            raise BrokerError(
+                f"could not enter the {what} — the field rejected both typing and fill(); "
+                "see the login_input_rejected screenshot"
+            )
+
+    async def _click_login_button(self) -> None:
+        """The submit control may be a <button>, or a styled div/anchor. Try the
+        accessible role first, then fall back to plain text."""
+        assert self._page is not None
+        by_role = self._page.get_by_role("button", name=LOGIN_BUTTON_TEXT, exact=True)
+        if await by_role.count() > 0:
+            await by_role.first.click()
+            return
+
+        by_text = self._page.get_by_text(LOGIN_BUTTON_TEXT, exact=True)
+        if await by_text.count() > 0:
+            log.info("login button matched by text, not by button role")
+            await by_text.first.click()
+            return
+
+        await self._screenshot("login_button_missing")
+        raise BrokerError(
+            f"could not find the '{LOGIN_BUTTON_TEXT}' button — see the login_button_missing screenshot"
+        )
+
     async def login(self) -> None:
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=self.headless)
@@ -131,17 +171,20 @@ class MofidPlaywrightClient(BrokerClient):
         await self._screenshot("login_page")
 
         if await username_field.is_visible():
-            await username_field.fill(self.username)
-            await self._page.get_by_placeholder(PASSWORD_PLACEHOLDER).fill(self.password)
+            await self._type_into(username_field, self.username, "username")
+            password_field = self._page.get_by_placeholder(PASSWORD_PLACEHOLDER)
+            await self._type_into(password_field, self.password, "password")
             await self._screenshot("login_filled")
-            await self._page.get_by_role("button", name=LOGIN_BUTTON_TEXT, exact=True).click()
+
+            await self._click_login_button()
             try:
                 await app_shell.wait_for(state="visible", timeout=PAGE_READY_TIMEOUT_MS)
             except PlaywrightTimeoutError as exc:
                 await self._screenshot("login_failed")
                 raise BrokerError(
                     "login did not reach the app — wrong credentials, or an extra step "
-                    "(OTP/agreement) is in the way; see the login_failed screenshot"
+                    f"(OTP/agreement) is in the way. Still at: {self._page.url} — "
+                    "see the login_failed screenshot"
                 ) from exc
             log.info("logged in with credentials as %s", self.username)
         else:
