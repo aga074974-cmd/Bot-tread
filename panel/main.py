@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import secrets
+from datetime import datetime
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -11,12 +12,12 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from bot.broker.mofid_playwright import MofidPlaywrightClient
-from bot.config import Settings, parse_tehran_datetime
+from bot.config import Settings, TEHRAN_TZ, parse_tehran_datetime
 from bot.logging_setup import setup_logging
 from bot.models import Order, OrderStatus, OrderType, Side
 from bot.scheduler import run_order
 from panel.db import OrderStore
-from panel.jalali import PERSIAN_MONTHS, current_jalali_year, jalali_to_gregorian_str, to_jalali_str
+from panel.jalali import PERSIAN_MONTHS, current_jalali_year, jalali_to_gregorian_str, to_jalali_str, today_jalali_ymd
 
 log = logging.getLogger(__name__)
 
@@ -135,6 +136,8 @@ async def dashboard(request: Request):
     flash = request.session.pop("flash", None)
     flash_error = request.session.pop("flash_error", False)
     current_year = current_jalali_year()
+    today_year, today_month, today_day = today_jalali_ymd()
+    now_time = datetime.now(TEHRAN_TZ).strftime("%H:%M")
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -144,6 +147,10 @@ async def dashboard(request: Request):
             "flash_error": flash_error,
             "months": list(enumerate(PERSIAN_MONTHS, start=1)),
             "years": [current_year, current_year + 1],
+            "today_year": today_year,
+            "today_month": today_month,
+            "today_day": today_day,
+            "now_time": now_time,
         },
     )
 

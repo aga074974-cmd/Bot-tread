@@ -23,3 +23,8 @@ def to_jalali_str(dt: datetime | date) -> str:
 
 def current_jalali_year() -> int:
     return jdatetime.date.today().year
+
+
+def today_jalali_ymd() -> tuple[int, int, int]:
+    today = jdatetime.date.today()
+    return today.year, today.month, today.day
