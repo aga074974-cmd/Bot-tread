@@ -30,6 +30,7 @@ async def main() -> None:
             password=settings.password,
             dry_run=settings.dry_run,
             headless=settings.headless,
+            storage_state_path=settings.storage_state_path,
         )
 
     await run_all(

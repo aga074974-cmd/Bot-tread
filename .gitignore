@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 .venv/
 panel.db
+auth_state.json

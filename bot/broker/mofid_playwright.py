@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -44,6 +45,7 @@ class MofidPlaywrightClient(BrokerClient):
         dry_run: bool = True,
         headless: bool = True,
         debug_screenshot_dir: str | None = "logs/screenshots",
+        storage_state_path: str | None = "auth_state.json",
     ) -> None:
         self.username = username
         self.password = password
@@ -55,6 +57,7 @@ class MofidPlaywrightClient(BrokerClient):
         self._page: Page | None = None
         self._shot_dir = Path(debug_screenshot_dir) if debug_screenshot_dir else None
         self._shot_seq = 0
+        self._storage_state_path = Path(storage_state_path) if storage_state_path else None
 
     async def _screenshot(self, label: str) -> None:
         if not self._shot_dir or not self._page:
@@ -68,10 +71,27 @@ class MofidPlaywrightClient(BrokerClient):
         except Exception as exc:
             log.warning("failed to save screenshot %s: %s", path, exc)
 
+    def _load_storage_state(self) -> str | None:
+        if not self._storage_state_path or not self._storage_state_path.exists():
+            return None
+        try:
+            json.loads(self._storage_state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            log.warning("saved session file %s is unreadable, ignoring: %s", self._storage_state_path, exc)
+            return None
+        return str(self._storage_state_path)
+
+    async def _save_storage_state(self) -> None:
+        if not self._storage_state_path or not self._context:
+            return
+        await self._context.storage_state(path=str(self._storage_state_path))
+        self._storage_state_path.chmod(0o600)  # contains session cookies
+        log.info("saved session to %s for next run", self._storage_state_path)
+
     async def login(self) -> None:
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=self.headless)
-        self._context = await self._browser.new_context()
+        self._context = await self._browser.new_context(storage_state=self._load_storage_state())
         self._page = await self._context.new_page()
 
         # Real login happens even in dry-run: we need an authenticated page to
@@ -79,13 +99,20 @@ class MofidPlaywrightClient(BrokerClient):
         # final submit/confirm click in place_order() is skipped in dry-run.
         await self._page.goto(LOGIN_URL)
         await self._screenshot("login_page")
-        await self._page.get_by_placeholder(USERNAME_PLACEHOLDER).fill(self.username)
-        await self._page.get_by_placeholder(PASSWORD_PLACEHOLDER).fill(self.password)
-        await self._screenshot("login_filled")
-        await self._page.get_by_text(LOGIN_BUTTON_TEXT, exact=True).click()
-        await self._page.wait_for_url(f"{LOGIN_URL}**", timeout=30_000)
+
+        username_field = self._page.get_by_placeholder(USERNAME_PLACEHOLDER)
+        if await username_field.count() == 0:
+            log.info("restored saved session, skipping credential login for %s", self.username)
+        else:
+            await username_field.fill(self.username)
+            await self._page.get_by_placeholder(PASSWORD_PLACEHOLDER).fill(self.password)
+            await self._screenshot("login_filled")
+            await self._page.get_by_text(LOGIN_BUTTON_TEXT, exact=True).click()
+            await self._page.wait_for_url(f"{LOGIN_URL}**", timeout=30_000)
+            log.info("logged in with credentials as %s", self.username)
+
         await self._screenshot("login_done")
-        log.info("logged in as %s", self.username)
+        await self._save_storage_state()
 
     async def place_order(self, order: Order) -> str:
         assert self._page is not None
