@@ -8,6 +8,8 @@ Type=simple
 User=mofidbot
 WorkingDirectory=/opt/mofid-bot
 EnvironmentFile=/opt/mofid-bot/.env
+Environment=HOME=/opt/mofid-bot
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 ExecStart=/opt/mofid-bot/.venv/bin/python /opt/mofid-bot/main.py --orders /opt/mofid-bot/orders.yaml
 Restart=on-failure
 RestartSec=10

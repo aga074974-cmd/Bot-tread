@@ -8,8 +8,12 @@ Type=simple
 User=mofidbot
 WorkingDirectory=/opt/mofid-bot
 EnvironmentFile=/opt/mofid-bot/.env
+# Chromium needs a writable HOME, and the browser lives outside the service
+# user's own home because it was downloaded before this unit existed.
+Environment=HOME=/opt/mofid-bot
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 ExecStart=/opt/mofid-bot/.venv/bin/uvicorn panel.main:app --host 0.0.0.0 --port 8080
-Restart=on-failure
+Restart=always
 RestartSec=10
 
 NoNewPrivileges=true

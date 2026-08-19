@@ -61,22 +61,39 @@ python main.py --orders orders.yaml
 ## دیپلوی روی VPS (systemd)
 
 ```bash
-sudo useradd -r -s /usr/sbin/nologin mofidbot
-sudo mkdir -p /opt/mofid-bot
-sudo cp -r . /opt/mofid-bot
+useradd -r -s /usr/sbin/nologin mofidbot
+mkdir -p /opt/mofid-bot
+git clone -b <branch> https://github.com/aga074974-cmd/Bot-tread.git /opt/mofid-bot
 cd /opt/mofid-bot
-sudo python3 -m venv .venv
-sudo .venv/bin/pip install -r requirements.txt
-sudo .venv/bin/playwright install --with-deps chromium
-sudo cp .env.example .env   # مقادیر واقعی رو بذار
-sudo cp orders.example.yaml orders.yaml  # سفارش‌های واقعی
-sudo mkdir -p logs && sudo chown -R mofidbot:mofidbot /opt/mofid-bot
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 
-sudo cp systemd/mofid-bot.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now mofid-bot
-sudo journalctl -u mofid-bot -f
+# مرورگر را در مسیر مشترک نصب کن تا سرویس (که با کاربر mofidbot اجرا می‌شود)
+# هم بتواند پیدایش کند. اگر دانلود با خطای ۴۰۳ مواجه شد، از میرور استفاده کن:
+#   export PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
+export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+.venv/bin/playwright install --with-deps chromium
+
+cp .env.example .env   # مقادیر واقعی رو بذار
+mkdir -p logs
+chown -R mofidbot:mofidbot /opt/mofid-bot /opt/pw-browsers
 ```
+
+بعد سرویس پنل را نصب و فعال کن تا مستقل از ترمینال، دائمی اجرا شود:
+
+```bash
+cp systemd/mofid-panel.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now mofid-panel
+systemctl status mofid-panel        # وضعیت
+journalctl -u mofid-panel -f        # لاگ زنده
+```
+
+از این به بعد پنل با بستن SSH قطع نمی‌شود، با ری‌استارت سرور هم خودکار بالا
+می‌آید. برای اعمال آپدیت‌ها: `git pull` و بعد `systemctl restart mofid-panel`.
+
+(سرویس `mofid-bot.service` فقط برای حالت `orders.yaml` است؛ اگر از پنل استفاده
+می‌کنی به آن نیازی نیست.)
 
 سرور VPS رو روی ساعت درست (وقت تهران یا NTP هماهنگ) تنظیم کن، چون دقت زمان‌بندی
 سفارش به ساعت سیستم وابسته‌ست.
@@ -97,15 +114,13 @@ sudo journalctl -u mofid-bot -f
 لیست/وضعیت سفارش‌ها رو ببین، سفارش‌های در انتظار رو لغو کن. با یه رمز عبور محافظت
 می‌شه (`PANEL_PASSWORD` توی `.env`).
 
-```bash
-# محلی
-uvicorn panel.main:app --host 0.0.0.0 --port 8080
+برای تست محلی (با بستن ترمینال قطع می‌شود):
 
-# روی VPS (systemd)
-sudo cp systemd/mofid-panel.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now mofid-panel
+```bash
+uvicorn panel.main:app --host 0.0.0.0 --port 8080
 ```
+
+روی VPS از سرویس systemd بالا استفاده کن تا دائمی باشد.
 
 بعد از بالا اومدن، از گوشی برو به `http://<IP-سرور>:8080` و با `PANEL_PASSWORD`
 وارد شو. سفارش‌هایی که از پنل اضافه می‌کنی توی `panel.db` (SQLite) ذخیره می‌شن و
