@@ -91,7 +91,14 @@ class MofidPlaywrightClient(BrokerClient):
     async def login(self) -> None:
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=self.headless)
-        self._context = await self._browser.new_context(storage_state=self._load_storage_state())
+        # m.easytrader.ir is a mobile-only layout (bottom nav, buy/sell
+        # buttons under the symbol page, etc.) — every selector in this file
+        # was captured from a phone. A default desktop viewport/user-agent
+        # would get served a different layout and none of them would match.
+        device = self._playwright.devices["Pixel 5"]
+        self._context = await self._browser.new_context(
+            storage_state=self._load_storage_state(), **device
+        )
         self._page = await self._context.new_page()
 
         # Real login happens even in dry-run: we need an authenticated page to
