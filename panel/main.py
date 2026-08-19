@@ -16,6 +16,7 @@ from bot.logging_setup import setup_logging
 from bot.models import Order, OrderStatus, OrderType, Side
 from bot.scheduler import run_order
 from panel.db import OrderStore
+from panel.jalali import PERSIAN_MONTHS, current_jalali_year, jalali_to_gregorian_str, to_jalali_str
 
 log = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ async def dashboard(request: Request):
         scheduled_at = r["scheduled_at"]
         try:
             local = parse_tehran_datetime(scheduled_at[:16].replace("T", " "))
-            scheduled_at_local = local.strftime("%Y-%m-%d %H:%M")
+            scheduled_at_local = f"{to_jalali_str(local)} {local.strftime('%H:%M')}"
         except ValueError:
             scheduled_at_local = scheduled_at
         orders.append(
@@ -133,10 +134,17 @@ async def dashboard(request: Request):
 
     flash = request.session.pop("flash", None)
     flash_error = request.session.pop("flash_error", False)
+    current_year = current_jalali_year()
     return templates.TemplateResponse(
         request,
         "dashboard.html",
-        {"orders": orders, "flash": flash, "flash_error": flash_error},
+        {
+            "orders": orders,
+            "flash": flash,
+            "flash_error": flash_error,
+            "months": list(enumerate(PERSIAN_MONTHS, start=1)),
+            "years": [current_year, current_year + 1],
+        },
     )
 
 
@@ -148,13 +156,16 @@ async def create_order(
     quantity: int = Form(...),
     order_type: str = Form(...),
     price: int | None = Form(None),
-    date: str = Form(...),
+    jalali_year: int = Form(...),
+    jalali_month: int = Form(...),
+    jalali_day: int = Form(...),
     time: str = Form(...),
 ):
     if not require_auth(request):
         return RedirectResponse("/login", status_code=303)
 
     try:
+        date = jalali_to_gregorian_str(jalali_year, jalali_month, jalali_day)
         scheduled_at = parse_tehran_datetime(f"{date} {time}")
         order = Order(
             symbol=symbol.strip(),
@@ -171,7 +182,7 @@ async def create_order(
 
     await store.insert(order)
     schedule(order)
-    request.session["flash"] = f"سفارش {order.symbol} برای {scheduled_at.strftime('%Y-%m-%d %H:%M')} ثبت شد."
+    request.session["flash"] = f"سفارش {order.symbol} برای {to_jalali_str(scheduled_at)} {scheduled_at.strftime('%H:%M')} ثبت شد."
     return RedirectResponse("/", status_code=303)
 
 
