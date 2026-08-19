@@ -1,0 +1,37 @@
+<!doctype html>
+<html dir="rtl" lang="fa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>عکس‌های اشکال‌زدایی</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 1rem; }
+  h1 { font-size: 1.2rem; }
+  .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .top a { color: #94a3b8; font-size: 0.85rem; text-decoration: none; }
+  .shot { background: #1e293b; border-radius: 12px; padding: 0.8rem; margin-bottom: 1.2rem; }
+  .shot h2 { font-size: 0.8rem; margin: 0 0 0.6rem; color: #94a3b8; font-weight: normal; word-break: break-all; }
+  .shot img { width: 100%; border-radius: 8px; display: block; }
+  .empty { color: #64748b; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>عکس‌های اشکال‌زدایی</h1>
+  <a href="/">بازگشت به پنل</a>
+</div>
+
+{% if names %}
+  {% for name in names %}
+  <div class="shot">
+    <h2>{{ name }}</h2>
+    <a href="/screenshots/{{ name }}"><img src="/screenshots/{{ name }}" alt="{{ name }}" loading="lazy"></a>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty">هنوز عکسی ذخیره نشده. بعد از اجرای یک سفارش، مراحل کار ربات اینجا ثبت می‌شود.</div>
+{% endif %}
+
+</body>
+</html>

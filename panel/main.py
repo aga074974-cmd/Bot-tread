@@ -5,9 +5,10 @@ import logging
 import os
 import secrets
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -34,6 +35,7 @@ if not PANEL_PASSWORD:
 store = OrderStore(DB_PATH)
 templates = Jinja2Templates(directory="panel/templates")
 running_tasks: dict[str, asyncio.Task] = {}
+SCREENSHOT_DIR = Path("logs/screenshots")
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax")
@@ -203,3 +205,27 @@ async def cancel_order(request: Request, order_id: str):
     request.session["flash"] = "سفارش لغو شد." if changed else "این سفارش دیگر قابل لغو نیست."
     request.session["flash_error"] = not changed
     return RedirectResponse("/", status_code=303)
+
+
+def _screenshot_names() -> list[str]:
+    if not SCREENSHOT_DIR.is_dir():
+        return []
+    return sorted((p.name for p in SCREENSHOT_DIR.glob("*.png")), reverse=True)
+
+
+@app.get("/screenshots", response_class=HTMLResponse)
+async def screenshots(request: Request):
+    if not require_auth(request):
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(request, "screenshots.html", {"names": _screenshot_names()})
+
+
+@app.get("/screenshots/{name}")
+async def screenshot_file(request: Request, name: str):
+    if not require_auth(request):
+        return RedirectResponse("/login", status_code=303)
+    # Only serve names that actually appear in the directory listing, so a
+    # crafted path can never escape SCREENSHOT_DIR.
+    if name not in _screenshot_names():
+        return RedirectResponse("/screenshots", status_code=303)
+    return FileResponse(SCREENSHOT_DIR / name, media_type="image/png")
