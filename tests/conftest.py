@@ -94,3 +94,9 @@ async def record(client: mofid_playwright.MofidPlaywrightClient) -> dict:
 
 def shots(directory: Path) -> list[str]:
     return sorted(p.name for p in Path(directory).glob("*.png"))
+
+
+def page_dump(directory: Path) -> str | None:
+    """The markup a failed run left behind, or None if it left none."""
+    path = Path(directory) / mofid_playwright.PAGE_HTML_NAME
+    return path.read_text(encoding="utf-8") if path.exists() else None

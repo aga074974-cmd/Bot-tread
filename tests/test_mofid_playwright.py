@@ -18,7 +18,7 @@ from bot.broker import mofid_playwright
 from bot.broker.base import BrokerError
 from bot.broker.mofid_playwright import MofidPlaywrightClient, _submit_button_text
 from bot.models import Order, OrderType, Side
-from conftest import PASSWORD, USERNAME, record, shots
+from conftest import PASSWORD, USERNAME, page_dump, record, shots
 
 SYMBOL = "دارونو"
 
@@ -69,6 +69,7 @@ async def test_field_that_refuses_both_is_reported(make_client, tmp_path):
         await client.login()
 
     assert shots(tmp_path / "shots") == ["01_login_page.png", "02_login_input_rejected.png"]
+    assert mofid_playwright.PASSWORD_PLACEHOLDER in page_dump(tmp_path / "shots")
 
 
 async def test_login_button_can_be_a_plain_div(make_client, caplog):
@@ -88,6 +89,7 @@ async def test_missing_login_button_is_reported(make_client, tmp_path):
         await client.login()
 
     assert "03_login_button_missing.png" in shots(tmp_path / "shots")
+    assert mofid_playwright.USERNAME_PLACEHOLDER in page_dump(tmp_path / "shots")
 
 
 async def test_slow_spa_is_not_mistaken_for_a_live_session(make_client):
@@ -110,6 +112,9 @@ async def test_page_that_never_settles_is_reported(make_client, monkeypatch, tmp
         await client.login()
 
     assert shots(tmp_path / "shots") == ["01_login_stuck.png"]
+    # The whole point of the dump: the screenshot shows a spinner, the markup
+    # shows the page really was still empty rather than mis-matched.
+    assert "در حال بارگذاری" in page_dump(tmp_path / "shots")
 
 
 async def test_extra_login_step_is_reported(make_client, monkeypatch, tmp_path):
@@ -122,6 +127,7 @@ async def test_extra_login_step_is_reported(make_client, monkeypatch, tmp_path):
 
     assert "127.0.0.1" in str(excinfo.value)  # reports where it got stuck
     assert "03_login_failed.png" in shots(tmp_path / "shots")
+    assert "رمز یکبار مصرف" in page_dump(tmp_path / "shots")  # the step in the way
 
 
 async def test_session_is_saved_and_reused(make_client, tmp_path, caplog):
@@ -254,6 +260,7 @@ async def test_missing_success_message_is_reported(make_client, tmp_path):
         await client.place_order(an_order())
 
     assert "11_no_confirmation.png" in shots(tmp_path / "shots")
+    assert "در حال پردازش" in page_dump(tmp_path / "shots")
 
 
 async def test_every_step_leaves_a_numbered_screenshot(make_client, tmp_path):
@@ -276,15 +283,30 @@ async def test_every_step_leaves_a_numbered_screenshot(make_client, tmp_path):
     ]
 
 
-async def test_browser_failures_are_reported_as_broker_errors(make_client):
+async def test_browser_failures_are_reported_as_broker_errors(make_client, tmp_path, caplog):
     """Regression: anything Playwright raises must arrive as a BrokerError so
     the scheduler retries and marks the order failed instead of dying."""
     client = make_client(dry_run=False)
     await client.login()
     await client._page.close()
 
-    with pytest.raises(BrokerError, match="unexpected error placing order"):
-        await client.place_order(an_order())
+    with caplog.at_level(logging.WARNING, logger="bot.broker.mofid_playwright"):
+        with pytest.raises(BrokerError, match="unexpected error placing order"):
+            await client.place_order(an_order())
+
+    # Nothing left to photograph or dump, and neither may mask the real error.
+    assert "failed to save page HTML" in caplog.text
+    assert page_dump(tmp_path / "shots") is None
+
+
+async def test_a_clean_run_leaves_no_page_dump(make_client, tmp_path):
+    """The dump is a failure artefact: a run that worked should not leave one."""
+    client = make_client(dry_run=True)
+    await client.login()
+
+    await client.place_order(an_order())
+
+    assert page_dump(tmp_path / "shots") is None
 
 
 async def test_unexpected_errors_keep_their_cause(tmp_path):

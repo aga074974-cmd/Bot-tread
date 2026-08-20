@@ -25,6 +25,9 @@ PAGE_READY_TIMEOUT_MS = 45_000
 # How long to wait for the broker's success message after confirming an order.
 SUCCESS_TIMEOUT_MS = 15_000
 
+# Where a failed run dumps the page's markup, next to that run's screenshots.
+PAGE_HTML_NAME = "page.html"
+
 # ---------------------------------------------------------------------------
 # Filled in from real screenshots of the order ticket, except where noted.
 # The quantity/price fields *look* like placeholders in the screenshot but
@@ -80,6 +83,27 @@ class MofidPlaywrightClient(BrokerClient):
         except Exception as exc:
             log.warning("failed to save screenshot %s: %s", path, exc)
 
+    async def _save_page_html(self) -> None:
+        """Dump the live DOM next to that run's screenshots. The screenshot
+        shows where a run stopped; the markup shows why — which is what you
+        need to retune a selector that no longer matches."""
+        if not self._shot_dir or not self._page:
+            return
+        self._shot_dir.mkdir(parents=True, exist_ok=True)
+        path = self._shot_dir / PAGE_HTML_NAME
+        try:
+            html = await self._page.content()
+            path.write_text(html, encoding="utf-8")
+        except Exception as exc:
+            log.warning("failed to save page HTML %s: %s", path, exc)
+            return
+        log.info("saved page HTML: %s", path)
+
+    async def _capture_failure(self, label: str) -> None:
+        """Everything worth keeping about the moment a run gave up."""
+        await self._screenshot(label)
+        await self._save_page_html()
+
     def _load_storage_state(self) -> str | None:
         if not self._storage_state_path or not self._storage_state_path.exists():
             return None
@@ -111,7 +135,7 @@ class MofidPlaywrightClient(BrokerClient):
         log.warning("%s field did not take typed input, retrying with fill()", what)
         await field.fill(value)
         if await field.input_value() != value:
-            await self._screenshot("login_input_rejected")
+            await self._capture_failure("login_input_rejected")
             raise BrokerError(
                 f"could not enter the {what} — the field rejected both typing and fill(); "
                 "see the login_input_rejected screenshot"
@@ -132,7 +156,7 @@ class MofidPlaywrightClient(BrokerClient):
             await by_text.first.click()
             return
 
-        await self._screenshot("login_button_missing")
+        await self._capture_failure("login_button_missing")
         raise BrokerError(
             f"could not find the '{LOGIN_BUTTON_TEXT}' button — see the login_button_missing screenshot"
         )
@@ -166,7 +190,7 @@ class MofidPlaywrightClient(BrokerClient):
                 state="visible", timeout=PAGE_READY_TIMEOUT_MS
             )
         except PlaywrightTimeoutError as exc:
-            await self._screenshot("login_stuck")
+            await self._capture_failure("login_stuck")
             raise BrokerError(
                 "page never showed either the login form or the app — see the login_stuck screenshot"
             ) from exc
@@ -183,7 +207,7 @@ class MofidPlaywrightClient(BrokerClient):
             try:
                 await app_shell.wait_for(state="visible", timeout=PAGE_READY_TIMEOUT_MS)
             except PlaywrightTimeoutError as exc:
-                await self._screenshot("login_failed")
+                await self._capture_failure("login_failed")
                 raise BrokerError(
                     "login did not reach the app — wrong credentials, or an extra step "
                     f"(OTP/agreement) is in the way. Still at: {self._page.url} — "
@@ -200,10 +224,10 @@ class MofidPlaywrightClient(BrokerClient):
         try:
             return await self._do_place_order(order)
         except BrokerError:
-            await self._screenshot("error")
+            await self._capture_failure("error")
             raise
         except Exception as exc:
-            await self._screenshot("error")
+            await self._capture_failure("error")
             raise BrokerError(f"unexpected error placing order: {exc!r}") from exc
 
     async def _do_place_order(self, order: Order) -> str:
@@ -250,7 +274,7 @@ class MofidPlaywrightClient(BrokerClient):
         try:
             await page.get_by_text(SUCCESS_TEXT).first.wait_for(timeout=SUCCESS_TIMEOUT_MS)
         except PlaywrightTimeoutError as exc:
-            await self._screenshot("no_confirmation")
+            await self._capture_failure("no_confirmation")
             raise BrokerError(
                 "no success confirmation seen after submitting — check the "
                 "no_confirmation screenshot to see whether it actually went through"

@@ -217,7 +217,8 @@ async def cancel_order(request: Request, order_id: str):
 
 
 def _screenshot_runs() -> list[dict]:
-    """One entry per order run (newest first), each with its own shots."""
+    """One entry per order run (newest first), with its shots and — when the
+    run failed — the page markup the connector dumped alongside them."""
     if not SCREENSHOT_DIR.is_dir():
         return []
     runs = []
@@ -225,13 +226,17 @@ def _screenshot_runs() -> list[dict]:
         if not folder.is_dir():
             continue
         shots = sorted(p.name for p in folder.glob("*.png"))
-        if shots:
-            runs.append({"name": folder.name, "shots": shots})
+        pages = sorted(p.name for p in folder.glob("*.html"))
+        if shots or pages:
+            runs.append({"name": folder.name, "shots": shots, "pages": pages})
     return runs
 
 
-def _is_known_shot(run: str, name: str) -> bool:
-    return any(r["name"] == run and name in r["shots"] for r in _screenshot_runs())
+def _is_known_file(run: str, name: str) -> bool:
+    return any(
+        r["name"] == run and (name in r["shots"] or name in r["pages"])
+        for r in _screenshot_runs()
+    )
 
 
 @app.get("/screenshots", response_class=HTMLResponse)
@@ -246,11 +251,28 @@ async def screenshots(request: Request):
 
 
 @app.get("/screenshots/{run}/{name}")
-async def screenshot_file(request: Request, run: str, name: str):
+async def screenshot_file(request: Request, run: str, name: str, download: int = 0):
     if not require_auth(request):
         return RedirectResponse("/login", status_code=303)
     # Only serve run/name pairs that actually appear in the directory listing,
     # so a crafted path can never escape SCREENSHOT_DIR.
-    if not _is_known_shot(run, name):
+    if not _is_known_file(run, name):
         return RedirectResponse("/screenshots", status_code=303)
-    return FileResponse(SCREENSHOT_DIR / run / name, media_type="image/png")
+
+    path = SCREENSHOT_DIR / run / name
+    if path.suffix == ".png":
+        return FileResponse(path, media_type="image/png")
+
+    # A page dump is markup captured from the broker's site. Serve it as plain
+    # text, never as text/html: rendering it here would run someone else's
+    # scripts on the panel's own origin (and its asset links point at the
+    # broker anyway). The source is what you need to fix a selector.
+    return FileResponse(
+        path,
+        media_type="text/plain; charset=utf-8",
+        filename=f"{run}_{name}" if download else None,
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
