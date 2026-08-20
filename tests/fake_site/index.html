@@ -6,7 +6,11 @@
 <title>ایزی‌تریدر (نمونه آزمایشی)</title>
 <style>
   body { font-family: sans-serif; margin: 0; padding: 12px 12px 72px; }
+  label { display: block; margin-top: 12px; font-size: 14px; color: #333; }
   input { display: block; width: 100%; box-sizing: border-box; padding: 10px; margin: 8px 0; font-size: 16px; }
+  button { font: inherit; }
+  #alert-item { background: #fdd; color: #900; border-radius: 6px; padding: 10px; margin: 10px 0; }
+  #alert-item[hidden] { display: none; }
   .btn { display: inline-block; padding: 10px 18px; margin: 6px 0; background: #245; color: #fff; border-radius: 6px; cursor: pointer; }
   .result { padding: 12px; border-bottom: 1px solid #ddd; cursor: pointer; }
   .nav { position: fixed; inset-inline: 0; bottom: 0; display: flex; justify-content: space-around; background: #eee; padding: 10px 0; }
@@ -68,55 +72,78 @@ function guard(el, mode, which) {
   });
 }
 
+// Note what is NOT here: the inputs carry no placeholder attribute. On the
+// real site those Persian strings are <label>s above the boxes, which is why
+// the connector matches on #user-name / #password instead.
 function renderLogin() {
-  const button = {
-    role: '<button id="go" class="btn">ورود</button>',
-    div: '<div id="go" class="btn">ورود</div>',
-    none: '<div class="btn">راهنما</div>',
-  }[opt('button', 'role')];
+  // 'none' keeps the word ورود on screen but not as a submit button, so a
+  // connector that went back to matching button text would still be caught.
+  const submit = opt('button', 'submit') === 'none'
+    ? '<div class="btn">ورود</div>'
+    : '<button type="submit" class="btn">ورود</button>';
 
   show(`
     <h2>ورود به حساب کاربری</h2>
-    <input id="u" placeholder="کدملی/شماره‌همراه/شناسه‌ملی/نام‌کاربری">
-    <input id="p" type="password" placeholder="کلمه عبور">
-    ${button}
+    <form id="login-form" onsubmit="event.preventDefault(); submitLogin();">
+      <label for="user-name">کدملی/شماره‌همراه/شناسه‌ملی/نام‌کاربری</label>
+      <input id="user-name" name="user-name" autocomplete="username">
+      <label for="password">کلمه عبور</label>
+      <input id="password" name="password" type="password" autocomplete="current-password">
+      <div id="alert-item" hidden></div>
+      ${submit}
+    </form>
   `);
 
   const mode = opt('input', 'accept');
-  guard(document.getElementById('u'), mode, 'username');
-  guard(document.getElementById('p'), mode, 'password');
-
-  const go = document.getElementById('go');
-  if (go) go.addEventListener('click', submitLogin);
+  guard(document.getElementById('user-name'), mode, 'username');
+  guard(document.getElementById('password'), mode, 'password');
 }
 
 function submitLogin() {
   rec.loginSubmittedWith = [
-    document.getElementById('u').value,
-    document.getElementById('p').value,
+    document.getElementById('user-name').value,
+    document.getElementById('password').value,
   ];
+
   if (opt('badlogin')) {
-    show('<h2>ورود به حساب کاربری</h2><p>رمز یکبار مصرف را وارد کنید</p><input placeholder="رمز یکبار مصرف">');
+    // alert=none  -> a further step that carries no message of its own
+    // alert=empty -> the banner element is there but says nothing
+    if (opt('alert') === 'none') {
+      show('<h2>ورود به حساب کاربری</h2><p>رمز یکبار مصرف را وارد کنید</p><input id="otp">');
+      return;
+    }
+    const banner = document.getElementById('alert-item');
+    if (opt('alert') !== 'empty') {
+      banner.textContent = opt('alert', 'نام کاربری یا کلمه عبور اشتباه است');
+      banner.hidden = false;
+    }
     return;
   }
+
   localStorage.setItem('session', 'ok');
   renderApp();
 }
 
 // ------------------------------------------------------------ app shell ----
-const nav = `
-  <div class="nav">
-    <div onclick="renderApp()">خانه</div>
-    <div onclick="renderSearch()">جستجو</div>
-    <div>پرتفوی</div>
-  </div>`;
+// The connector treats any of دیده‌بان / جستجو / قدرت خرید as proof that the
+// app is up. `markers` renders only one of them, so each can be tested alone.
+const marker = name => ['all', name].includes(opt('markers', 'all'));
+
+function navHtml() {
+  const tabs = ['<div onclick="renderApp()">خانه</div>'];
+  if (marker('watch')) tabs.push('<div>دیده‌بان</div>');
+  if (marker('search')) tabs.push('<div onclick="renderSearch()">جستجو</div>');
+  tabs.push('<div>پرتفوی</div>');
+  return `<div class="nav">${tabs.join('')}</div>`;
+}
 
 function renderApp() {
-  show(`<h2>خانه</h2><p>وضعیت بازار</p>${nav}`);
+  const power = marker('power') ? '<p>قدرت خرید: ۱۲٬۵۰۰٬۰۰۰ ریال</p>' : '';
+  show(`<h2>خانه</h2><p>وضعیت بازار</p>${power}${navHtml()}`);
 }
 
 function renderSearch() {
-  show(`<input id="q" placeholder="جستجوی نماد"><div id="results"></div>${nav}`);
+  show(`<input id="q" placeholder="جستجوی نماد"><div id="results"></div>${navHtml()}`);
   document.getElementById('q').addEventListener('input', event => {
     const term = event.target.value.trim();
     rec.searchedFor = term;
@@ -133,7 +160,7 @@ function openSymbol(symbol) {
     <p>آخرین معامله: ${PRICE_PREFILL}</p>
     <div class="btn" onclick="openTicket('buy')">خرید</div>
     <div class="btn" onclick="openTicket('sell')">فروش</div>
-    ${nav}`);
+    ${navHtml()}`);
 }
 
 // --------------------------------------------------------- order ticket ----
@@ -144,7 +171,7 @@ function openTicket(side) {
     <input id="qty" placeholder="تعداد">
     <input id="price" placeholder="قیمت" value="${PRICE_PREFILL}">
     <div class="btn" onclick="submitOrder()">${side === 'buy' ? 'ارسال خرید' : 'ارسال فروش'}</div>
-    ${nav}`);
+    ${navHtml()}`);
 }
 
 function submitOrder() {
@@ -167,10 +194,10 @@ function confirmOrder() {
 
 function finish() {
   if (opt('confirm') === 'nosuccess') {
-    show(`<p>در حال پردازش…</p>${nav}`);
+    show(`<p>در حال پردازش…</p>${navHtml()}`);
     return;
   }
-  show(`<div class="toast">سفارش شما با موفقیت ثبت شد</div>${nav}`);
+  show(`<div class="toast">سفارش شما با موفقیت ثبت شد</div>${navHtml()}`);
 }
 
 // ------------------------------------------------------------------ boot ----

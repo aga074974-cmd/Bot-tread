@@ -69,27 +69,19 @@ async def test_field_that_refuses_both_is_reported(make_client, tmp_path):
         await client.login()
 
     assert shots(tmp_path / "shots") == ["01_login_page.png", "02_login_input_rejected.png"]
-    assert mofid_playwright.PASSWORD_PLACEHOLDER in page_dump(tmp_path / "shots")
-
-
-async def test_login_button_can_be_a_plain_div(make_client, caplog):
-    client = make_client(button="div")
-
-    with caplog.at_level(logging.INFO, logger="bot.broker.mofid_playwright"):
-        await client.login()
-
-    assert (await record(client))["loginSubmittedWith"] == [USERNAME, PASSWORD]
-    assert "matched by text, not by button role" in caplog.text
+    assert 'id="password"' in page_dump(tmp_path / "shots")
 
 
 async def test_missing_login_button_is_reported(make_client, tmp_path):
+    """The scenario still shows the word ورود, just not as a submit button —
+    so this also pins that the button is found by selector, not by its text."""
     client = make_client(button="none")
 
-    with pytest.raises(BrokerError, match="could not find the 'ورود' button"):
+    with pytest.raises(BrokerError, match="could not find the login button"):
         await client.login()
 
     assert "03_login_button_missing.png" in shots(tmp_path / "shots")
-    assert mofid_playwright.USERNAME_PLACEHOLDER in page_dump(tmp_path / "shots")
+    assert 'id="user-name"' in page_dump(tmp_path / "shots")
 
 
 async def test_slow_spa_is_not_mistaken_for_a_live_session(make_client):
@@ -117,17 +109,47 @@ async def test_page_that_never_settles_is_reported(make_client, monkeypatch, tmp
     assert "در حال بارگذاری" in page_dump(tmp_path / "shots")
 
 
-async def test_extra_login_step_is_reported(make_client, monkeypatch, tmp_path):
-    """Wrong credentials or an OTP/agreement screen: the app never appears."""
+async def test_the_sites_own_error_message_is_reported(make_client, monkeypatch, tmp_path, caplog):
+    """When the broker says why it refused, that beats anything we can infer
+    from a timeout — so it goes in the error the panel shows and in the log."""
     monkeypatch.setattr(mofid_playwright, "PAGE_READY_TIMEOUT_MS", 1_500)
     client = make_client(badlogin=1)
 
-    with pytest.raises(BrokerError, match="login did not reach the app") as excinfo:
+    with caplog.at_level(logging.ERROR, logger="bot.broker.mofid_playwright"):
+        with pytest.raises(BrokerError, match="نام کاربری یا کلمه عبور اشتباه است") as excinfo:
+            await client.login()
+
+    assert "the site says" in str(excinfo.value)
+    assert "نام کاربری یا کلمه عبور اشتباه است" in caplog.text
+    assert "03_login_failed.png" in shots(tmp_path / "shots")
+
+
+async def test_a_step_with_no_message_falls_back_to_the_generic_reason(
+    make_client, monkeypatch, tmp_path
+):
+    """An OTP/agreement screen carries no #alert-item at all."""
+    monkeypatch.setattr(mofid_playwright, "PAGE_READY_TIMEOUT_MS", 1_500)
+    client = make_client(badlogin=1, alert="none")
+
+    with pytest.raises(BrokerError, match="OTP/agreement") as excinfo:
         await client.login()
 
+    assert "the site says" not in str(excinfo.value)
     assert "127.0.0.1" in str(excinfo.value)  # reports where it got stuck
-    assert "03_login_failed.png" in shots(tmp_path / "shots")
     assert "رمز یکبار مصرف" in page_dump(tmp_path / "shots")  # the step in the way
+
+
+async def test_an_empty_error_banner_is_ignored(make_client, monkeypatch):
+    """The banner element is always in the DOM; only its text is worth
+    reporting, and a hidden one has none."""
+    monkeypatch.setattr(mofid_playwright, "PAGE_READY_TIMEOUT_MS", 1_500)
+    client = make_client(badlogin=1, alert="empty")
+
+    with pytest.raises(BrokerError) as excinfo:
+        await client.login()
+
+    assert "the site says" not in str(excinfo.value)
+    assert "wrong credentials" in str(excinfo.value)
 
 
 async def test_session_is_saved_and_reused(make_client, tmp_path, caplog):
@@ -160,6 +182,17 @@ async def test_unreadable_session_file_is_ignored(make_client, tmp_path, caplog)
         await client.login()
 
     assert "is unreadable, ignoring" in caplog.text
+    assert (await record(client))["loginSubmittedWith"] == [USERNAME, PASSWORD]
+
+
+@pytest.mark.parametrize("only", ["watch", "search", "power"])
+async def test_any_single_app_marker_counts_as_reaching_the_app(make_client, only: str):
+    """دیده‌بان, جستجو and قدرت خرید are combined with or_ precisely so that a
+    renamed or missing one does not read as a failed login."""
+    client = make_client(markers=only)
+
+    await client.login()
+
     assert (await record(client))["loginSubmittedWith"] == [USERNAME, PASSWORD]
 
 
@@ -354,14 +387,22 @@ def test_submit_button_text_matches_the_side():
     assert _submit_button_text(Side.SELL) == "ارسال فروش"
 
 
-def test_fake_site_uses_the_same_labels_as_the_connector():
+def test_fake_site_uses_the_same_selectors_as_the_connector():
     """Keeps the stand-in honest: if a selector here is retuned against the
     real site, tests/fake_site/index.html has to be updated with it."""
     html = (Path(__file__).parent / "fake_site" / "index.html").read_text(encoding="utf-8")
+
+    ids = [
+        mofid_playwright.USERNAME_INPUT,
+        mofid_playwright.PASSWORD_INPUT,
+        mofid_playwright.LOGIN_ERROR,
+    ]
+    missing_ids = [sel for sel in ids if f'id="{sel.lstrip("#")}"' not in html]
+    assert not missing_ids, f"tests/fake_site/index.html has no element for: {missing_ids}"
+    assert 'type="submit"' in html, f"nothing matches {mofid_playwright.LOGIN_SUBMIT}"
+
     labels = [
-        mofid_playwright.USERNAME_PLACEHOLDER,
-        mofid_playwright.PASSWORD_PLACEHOLDER,
-        mofid_playwright.LOGIN_BUTTON_TEXT,
+        *mofid_playwright.APP_MARKERS,
         mofid_playwright.SEARCH_TAB_TEXT,
         mofid_playwright.SYMBOL_SEARCH_PLACEHOLDER,
         mofid_playwright.BUY_BUTTON_TEXT,
@@ -375,3 +416,15 @@ def test_fake_site_uses_the_same_labels_as_the_connector():
     ]
     missing = [label for label in labels if label not in html]
     assert not missing, f"tests/fake_site/index.html is missing: {missing}"
+
+
+def test_fake_login_form_has_no_placeholders():
+    """The bug these selectors fixed: those Persian strings are labels above
+    the inputs. The stand-in must keep reproducing that, or a connector that
+    went back to get_by_placeholder() would pass its tests and fail live."""
+    html = (Path(__file__).parent / "fake_site" / "index.html").read_text(encoding="utf-8")
+    login_form = html[html.index('<form id="login-form"') : html.index("</form>")]
+
+    assert "placeholder" not in login_form
+    assert '<label for="user-name">' in login_form
+    assert '<label for="password">' in login_form

@@ -4,7 +4,7 @@ import json
 import logging
 from pathlib import Path
 
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import async_playwright, Browser, BrowserContext, Locator, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from bot.broker.base import BrokerClient, BrokerError
@@ -13,9 +13,18 @@ from bot.models import Order, OrderType, Side
 log = logging.getLogger(__name__)
 
 LOGIN_URL = "https://m.easytrader.ir/"
-USERNAME_PLACEHOLDER = "کدملی/شماره‌همراه/شناسه‌ملی/نام‌کاربری"
-PASSWORD_PLACEHOLDER = "کلمه عبور"
-LOGIN_BUTTON_TEXT = "ورود"
+
+# Read off the real login page. The Persian strings around these fields are
+# labels sitting above the inputs, not placeholders — searching by placeholder
+# text matched nothing, which is what these ids replace.
+USERNAME_INPUT = "#user-name"
+PASSWORD_INPUT = "#password"
+LOGIN_SUBMIT = "button[type='submit']"
+LOGIN_ERROR = "#alert-item"  # the site's own banner, e.g. a wrong password
+
+# Whether the app is up is decided on several of its labels rather than one:
+# any single one could be renamed or A/B tested without the app being gone.
+APP_MARKERS = ("دیده‌بان", "جستجو", "قدرت خرید")
 
 # The site is an Angular SPA behind an OAuth redirect, so nothing is on the
 # page at load time. Every step waits for its element rather than assuming
@@ -35,7 +44,7 @@ PAGE_HTML_NAME = "page.html"
 # place_order() fails, check that run's folder under logs/screenshots/ to see
 # exactly how far it got.
 # ---------------------------------------------------------------------------
-SEARCH_TAB_TEXT = "جستجو"  # bottom nav tab; also our "we're logged in" marker
+SEARCH_TAB_TEXT = "جستجو"  # bottom nav tab
 SYMBOL_SEARCH_PLACEHOLDER = "جستجوی نماد"
 BUY_BUTTON_TEXT = "خرید"
 SELL_BUTTON_TEXT = "فروش"
@@ -141,25 +150,40 @@ class MofidPlaywrightClient(BrokerClient):
                 "see the login_input_rejected screenshot"
             )
 
-    async def _click_login_button(self) -> None:
-        """The submit control may be a <button>, or a styled div/anchor. Try the
-        accessible role first, then fall back to plain text."""
+    def _app_markers(self) -> Locator:
+        """Anything only the logged-in app puts on screen. Left un-narrowed so
+        it can be combined with another locator; add .first before waiting."""
         assert self._page is not None
-        by_role = self._page.get_by_role("button", name=LOGIN_BUTTON_TEXT, exact=True)
-        if await by_role.count() > 0:
-            await by_role.first.click()
-            return
+        first, *rest = APP_MARKERS
+        locator = self._page.get_by_text(first)
+        for marker in rest:
+            locator = locator.or_(self._page.get_by_text(marker))
+        return locator
 
-        by_text = self._page.get_by_text(LOGIN_BUTTON_TEXT, exact=True)
-        if await by_text.count() > 0:
-            log.info("login button matched by text, not by button role")
-            await by_text.first.click()
-            return
+    async def _site_error(self) -> str:
+        """The message the site itself put on screen, if any. It names the real
+        problem — wrong password, locked account — instead of leaving us to
+        guess from a timeout. A hidden banner reads as empty, as it should."""
+        assert self._page is not None
+        try:
+            banner = self._page.locator(LOGIN_ERROR).first
+            if await banner.count() == 0:
+                return ""
+            return (await banner.inner_text()).strip()
+        except Exception as exc:
+            log.warning("could not read the site's error banner: %s", exc)
+            return ""
 
-        await self._capture_failure("login_button_missing")
-        raise BrokerError(
-            f"could not find the '{LOGIN_BUTTON_TEXT}' button — see the login_button_missing screenshot"
-        )
+    async def _click_login_button(self) -> None:
+        assert self._page is not None
+        button = self._page.locator(LOGIN_SUBMIT).first
+        if await button.count() == 0:
+            await self._capture_failure("login_button_missing")
+            raise BrokerError(
+                f"could not find the login button ({LOGIN_SUBMIT}) — "
+                "see the login_button_missing screenshot"
+            )
+        await button.click()
 
     async def login(self) -> None:
         self._playwright = await async_playwright().start()
@@ -179,14 +203,14 @@ class MofidPlaywrightClient(BrokerClient):
         # final submit/confirm click in place_order() is skipped in dry-run.
         await self._page.goto(LOGIN_URL)
 
-        username_field = self._page.get_by_placeholder(USERNAME_PLACEHOLDER)
-        app_shell = self._page.get_by_text(SEARCH_TAB_TEXT, exact=True).first
+        password_field = self._page.locator(PASSWORD_INPUT)
+        app_markers = self._app_markers()
 
         # Wait for the SPA (and any OAuth redirect) to settle into one of two
         # states before deciding anything. Checking straight after goto() reads
         # an empty page and wrongly concludes the saved session is still valid.
         try:
-            await username_field.or_(app_shell).first.wait_for(
+            await password_field.or_(app_markers).first.wait_for(
                 state="visible", timeout=PAGE_READY_TIMEOUT_MS
             )
         except PlaywrightTimeoutError as exc:
@@ -197,21 +221,29 @@ class MofidPlaywrightClient(BrokerClient):
 
         await self._screenshot("login_page")
 
-        if await username_field.is_visible():
-            await self._type_into(username_field, self.username, "username")
-            password_field = self._page.get_by_placeholder(PASSWORD_PLACEHOLDER)
+        # The password box is the login form's own marker: while it is on
+        # screen no session was restored, so we have to sign in.
+        if await password_field.is_visible():
+            await self._type_into(self._page.locator(USERNAME_INPUT), self.username, "username")
             await self._type_into(password_field, self.password, "password")
             await self._screenshot("login_filled")
 
             await self._click_login_button()
             try:
-                await app_shell.wait_for(state="visible", timeout=PAGE_READY_TIMEOUT_MS)
+                await app_markers.first.wait_for(state="visible", timeout=PAGE_READY_TIMEOUT_MS)
             except PlaywrightTimeoutError as exc:
                 await self._capture_failure("login_failed")
+                site_error = await self._site_error()
+                if site_error:
+                    log.error("the broker refused the login: %s", site_error)
+                reason = (
+                    f"the site says: {site_error}"
+                    if site_error
+                    else "wrong credentials, or an extra step (OTP/agreement) is in the way"
+                )
                 raise BrokerError(
-                    "login did not reach the app — wrong credentials, or an extra step "
-                    f"(OTP/agreement) is in the way. Still at: {self._page.url} — "
-                    "see the login_failed screenshot"
+                    f"login did not reach the app — {reason}. "
+                    f"Still at: {self._page.url} — see the login_failed screenshot"
                 ) from exc
             log.info("logged in with credentials as %s", self.username)
         else:
