@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ایزی‌تریدر (نمونه آزمایشی)</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 12px 12px 72px; }
+  input { display: block; width: 100%; box-sizing: border-box; padding: 10px; margin: 8px 0; font-size: 16px; }
+  .btn { display: inline-block; padding: 10px 18px; margin: 6px 0; background: #245; color: #fff; border-radius: 6px; cursor: pointer; }
+  .result { padding: 12px; border-bottom: 1px solid #ddd; cursor: pointer; }
+  .nav { position: fixed; inset-inline: 0; bottom: 0; display: flex; justify-content: space-around; background: #eee; padding: 10px 0; }
+  .nav div { cursor: pointer; }
+  .sheet { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
+  .sheet > div { background: #fff; padding: 20px; border-radius: 10px; min-width: 70%; }
+  .toast { background: #0a6; color: #fff; padding: 12px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// A stand-in for m.easytrader.ir's mobile UI: same Persian labels and the same
+// screen order as the real app, so the connector can be driven end to end
+// without touching a live brokerage account. Scenarios are selected with query
+// params (see tests/conftest.py).
+const params = new URLSearchParams(location.search);
+const opt = (key, fallback) => params.get(key) ?? fallback;
+
+// Everything the "site" saw the connector do. Tests read this back through
+// page.evaluate() to assert on behaviour rather than on screenshots.
+const rec = window.__record = {
+  restoredSession: false,
+  loginSubmittedWith: null,
+  typedKeys: {username: 0, password: 0},
+  searchedFor: null,
+  symbolOpened: null,
+  side: null,
+  quantity: null,
+  price: null,
+  submitClicked: false,
+  confirmClicked: false,
+  userAgent: navigator.userAgent,
+  viewportWidth: window.innerWidth,
+  hasTouch: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
+};
+
+const root = document.getElementById('root');
+const show = html => { root.innerHTML = html; };
+const PRICE_PREFILL = '12500';
+
+// ---------------------------------------------------------------- login ----
+// Mirrors the real login inputs, which are wired to an on-screen keyboard
+// widget: `input` modes decide which kind of event the field will accept.
+//   accept   - an ordinary field, takes anything
+//   stubborn - only real keystrokes count; a programmatic value set is undone
+//   nokeys   - the opposite: ignores typing, accepts a programmatic set
+//   reject   - refuses both
+function guard(el, mode, which) {
+  let sawKeydown = false;
+  el.addEventListener('keydown', () => { sawKeydown = true; rec.typedKeys[which]++; });
+  el.addEventListener('input', () => {
+    const typed = sawKeydown;
+    sawKeydown = false;
+    const refuse = mode === 'reject'
+      || (mode === 'stubborn' && !typed)
+      || (mode === 'nokeys' && typed);
+    if (refuse) el.value = '';
+  });
+}
+
+function renderLogin() {
+  const button = {
+    role: '<button id="go" class="btn">ورود</button>',
+    div: '<div id="go" class="btn">ورود</div>',
+    none: '<div class="btn">راهنما</div>',
+  }[opt('button', 'role')];
+
+  show(`
+    <h2>ورود به حساب کاربری</h2>
+    <input id="u" placeholder="کدملی/شماره‌همراه/شناسه‌ملی/نام‌کاربری">
+    <input id="p" type="password" placeholder="کلمه عبور">
+    ${button}
+  `);
+
+  const mode = opt('input', 'accept');
+  guard(document.getElementById('u'), mode, 'username');
+  guard(document.getElementById('p'), mode, 'password');
+
+  const go = document.getElementById('go');
+  if (go) go.addEventListener('click', submitLogin);
+}
+
+function submitLogin() {
+  rec.loginSubmittedWith = [
+    document.getElementById('u').value,
+    document.getElementById('p').value,
+  ];
+  if (opt('badlogin')) {
+    show('<h2>ورود به حساب کاربری</h2><p>رمز یکبار مصرف را وارد کنید</p><input placeholder="رمز یکبار مصرف">');
+    return;
+  }
+  localStorage.setItem('session', 'ok');
+  renderApp();
+}
+
+// ------------------------------------------------------------ app shell ----
+const nav = `
+  <div class="nav">
+    <div onclick="renderApp()">خانه</div>
+    <div onclick="renderSearch()">جستجو</div>
+    <div>پرتفوی</div>
+  </div>`;
+
+function renderApp() {
+  show(`<h2>خانه</h2><p>وضعیت بازار</p>${nav}`);
+}
+
+function renderSearch() {
+  show(`<input id="q" placeholder="جستجوی نماد"><div id="results"></div>${nav}`);
+  document.getElementById('q').addEventListener('input', event => {
+    const term = event.target.value.trim();
+    rec.searchedFor = term;
+    document.getElementById('results').innerHTML = term
+      ? `<div class="result" onclick="openSymbol('${term}')">${term}</div>`
+      : '';
+  });
+}
+
+function openSymbol(symbol) {
+  rec.symbolOpened = symbol;
+  show(`
+    <h2>${symbol}</h2>
+    <p>آخرین معامله: ${PRICE_PREFILL}</p>
+    <div class="btn" onclick="openTicket('buy')">خرید</div>
+    <div class="btn" onclick="openTicket('sell')">فروش</div>
+    ${nav}`);
+}
+
+// --------------------------------------------------------- order ticket ----
+function openTicket(side) {
+  rec.side = side;
+  show(`
+    <h2>${side === 'buy' ? 'خرید' : 'فروش'} ${rec.symbolOpened}</h2>
+    <input id="qty" placeholder="تعداد">
+    <input id="price" placeholder="قیمت" value="${PRICE_PREFILL}">
+    <div class="btn" onclick="submitOrder()">${side === 'buy' ? 'ارسال خرید' : 'ارسال فروش'}</div>
+    ${nav}`);
+}
+
+function submitOrder() {
+  rec.submitClicked = true;
+  rec.quantity = document.getElementById('qty').value;
+  rec.price = document.getElementById('price').value;
+  if (opt('confirm', 'sheet') === 'none') return finish();
+  show(`
+    <div class="sheet"><div>
+      <p>سفارش خود را بررسی کنید</p>
+      <div class="btn" onclick="confirmOrder()">تایید</div>
+      <div class="btn">انصراف</div>
+    </div></div>`);
+}
+
+function confirmOrder() {
+  rec.confirmClicked = true;
+  finish();
+}
+
+function finish() {
+  if (opt('confirm') === 'nosuccess') {
+    show(`<p>در حال پردازش…</p>${nav}`);
+    return;
+  }
+  show(`<div class="toast">سفارش شما با موفقیت ثبت شد</div>${nav}`);
+}
+
+// ------------------------------------------------------------------ boot ----
+function boot() {
+  if (opt('stuck')) {
+    show('<p>در حال بارگذاری…</p>');
+    return;
+  }
+  if (localStorage.getItem('session') === 'ok') {
+    rec.restoredSession = true;
+    renderApp();
+    return;
+  }
+  renderLogin();
+}
+
+// The real site is an Angular SPA behind an OAuth redirect: the page is blank
+// for a moment after load. `boot` delays the first paint to reproduce that.
+setTimeout(boot, Number(opt('boot', 0)));
+</script>
+</body>
+</html>

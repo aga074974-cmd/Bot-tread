@@ -58,6 +58,23 @@ python main.py --orders orders.yaml
 تا وقتی `DRY_RUN=true` باشه، فقط در لاگ می‌بینی که ربات چه سفارشی رو در چه زمانی
 "می‌خواست" ثبت کنه.
 
+## تست خودکار
+
+تست‌های پوشه‌ی `tests/` کل مسیر لاگین و ثبت سفارش را روی یک سایت ساختگی
+(`tests/fake_site/`) اجرا می‌کنند که همان برچسب‌های فارسی و همان ترتیب صفحه‌های اپ
+واقعی را دارد — بدون اتصال به حساب واقعی و بدون ارسال هیچ سفارشی.
+
+```bash
+pip install -r requirements-dev.txt
+playwright install chromium
+pytest
+```
+
+اگر بعداً selectorـی را از روی سایت واقعی اصلاح کردی، همان متن را در
+`tests/fake_site/index.html` هم به‌روز کن؛ تست
+`test_fake_site_uses_the_same_labels_as_the_connector` دقیقاً همین هماهنگی را
+چک می‌کند.
+
 ## دیپلوی روی VPS (systemd)
 
 ```bash
@@ -158,3 +175,4 @@ orders:
 - `main.py` — نقطه‌ی ورود حالت YAML (اجرای یک‌باره)
 - `panel/` — پنل وب (FastAPI): `panel/main.py` سرور و route‌ها،
   `panel/db.py` ذخیره‌سازی SQLite، `panel/templates/` صفحات HTML
+- `tests/` — تست‌های خودکار کانکتور مرورگری روی سایت ساختگی `tests/fake_site/`

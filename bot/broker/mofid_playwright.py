@@ -22,6 +22,9 @@ LOGIN_BUTTON_TEXT = "ورود"
 # it's already there.
 PAGE_READY_TIMEOUT_MS = 45_000
 
+# How long to wait for the broker's success message after confirming an order.
+SUCCESS_TIMEOUT_MS = 15_000
+
 # ---------------------------------------------------------------------------
 # Filled in from real screenshots of the order ticket, except where noted.
 # The quantity/price fields *look* like placeholders in the screenshot but
@@ -245,7 +248,7 @@ class MofidPlaywrightClient(BrokerClient):
             await self._screenshot("after_confirm")
 
         try:
-            await page.get_by_text(SUCCESS_TEXT).first.wait_for(timeout=15_000)
+            await page.get_by_text(SUCCESS_TEXT).first.wait_for(timeout=SUCCESS_TIMEOUT_MS)
         except PlaywrightTimeoutError as exc:
             await self._screenshot("no_confirmation")
             raise BrokerError(
