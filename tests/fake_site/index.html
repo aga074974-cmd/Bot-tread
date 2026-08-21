@@ -15,8 +15,6 @@
   .result { padding: 12px; border-bottom: 1px solid #ddd; cursor: pointer; }
   .nav { position: fixed; inset-inline: 0; bottom: 0; display: flex; justify-content: space-around; background: #eee; padding: 10px 0; }
   .nav div { cursor: pointer; }
-  .sheet { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
-  .sheet > div { background: #fff; padding: 20px; border-radius: 10px; min-width: 70%; }
   .toast { background: #0a6; color: #fff; padding: 12px; border-radius: 6px; }
 </style>
 </head>
@@ -174,30 +172,29 @@ function openTicket(side) {
     ${navHtml()}`);
 }
 
+// Sending is final here — the real broker has no confirmation step. With
+// `confirm_trap` a تایید button is put on screen anyway: nothing should ever
+// click it, and the record shows if something did.
+const trapHtml = () => opt('confirm_trap')
+  ? '<div class="btn" onclick="window.__record.confirmClicked = true">تایید</div>'
+  : '';
+
 function submitOrder() {
   rec.submitClicked = true;
   rec.quantity = document.getElementById('qty').value;
   rec.price = document.getElementById('price').value;
-  if (opt('confirm', 'sheet') === 'none') return finish();
-  show(`
-    <div class="sheet"><div>
-      <p>سفارش خود را بررسی کنید</p>
-      <div class="btn" onclick="confirmOrder()">تایید</div>
-      <div class="btn">انصراف</div>
-    </div></div>`);
-}
-
-function confirmOrder() {
-  rec.confirmClicked = true;
-  finish();
+  // The reply is not instant on the real site; `reply` reproduces that lag,
+  // which is the whole reason for the second screenshot.
+  show(`<p>در حال ارسال…</p>${trapHtml()}${navHtml()}`);
+  setTimeout(finish, Number(opt('reply', 0)));
 }
 
 function finish() {
-  if (opt('confirm') === 'nosuccess') {
+  if (opt('outcome') === 'nosuccess') {
     show(`<p>در حال پردازش…</p>${navHtml()}`);
     return;
   }
-  show(`<div class="toast">سفارش شما با موفقیت ثبت شد</div>${navHtml()}`);
+  show(`<div class="toast">سفارش شما با موفقیت ثبت شد</div>${trapHtml()}${navHtml()}`);
 }
 
 // ------------------------------------------------------------------ boot ----

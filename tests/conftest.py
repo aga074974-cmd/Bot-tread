@@ -19,6 +19,10 @@ PASSWORD = "s3cret-pass"
 # test fails in seconds instead of the production 45s.
 TEST_READY_TIMEOUT_MS = 10_000
 
+# What the connector ships with, captured before any test shortens it — the
+# test that checks the second screenshot really lags behind the first uses it.
+SHIPPED_SETTLE_MS = mofid_playwright.SUBMIT_SETTLE_MS
+
 
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *args: object) -> None:  # keep pytest output readable
@@ -53,6 +57,7 @@ def site() -> FakeSite:
 def fast_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mofid_playwright, "PAGE_READY_TIMEOUT_MS", TEST_READY_TIMEOUT_MS)
     monkeypatch.setattr(mofid_playwright, "SUCCESS_TIMEOUT_MS", 3_000)
+    monkeypatch.setattr(mofid_playwright, "SUBMIT_SETTLE_MS", 150)
 
 
 @pytest.fixture

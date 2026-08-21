@@ -31,8 +31,13 @@ APP_MARKERS = ("دیده‌بان", "جستجو", "قدرت خرید")
 # it's already there.
 PAGE_READY_TIMEOUT_MS = 45_000
 
-# How long to wait for the broker's success message after confirming an order.
+# How long to wait for the broker's success message after sending an order.
 SUCCESS_TIMEOUT_MS = 15_000
+
+# The ticket does not react to the send click straight away, so the shot taken
+# on the spot catches the form mid-flight. This is how long to wait before
+# taking a second one that actually shows the outcome.
+SUBMIT_SETTLE_MS = 1_000
 
 # Where a failed run dumps the page's markup, next to that run's screenshots.
 PAGE_HTML_NAME = "page.html"
@@ -50,7 +55,6 @@ BUY_BUTTON_TEXT = "خرید"
 SELL_BUTTON_TEXT = "فروش"
 QUANTITY_PLACEHOLDER = "تعداد"
 PRICE_PLACEHOLDER = "قیمت"
-CONFIRM_BUTTON_TEXT = "تایید"
 SUCCESS_TEXT = "با موفقیت"  # unverified — not seen in captured screenshots yet
 
 
@@ -295,21 +299,26 @@ class MofidPlaywrightClient(BrokerClient):
             )
             return f"dry-run-{order.id}"
 
+        # There is no confirmation step at this broker: the send button places
+        # the order, so by this point it is already live.
         await page.get_by_text(_submit_button_text(order.side), exact=True).first.click()
         await self._screenshot("after_submit")
 
-        confirm_btn = page.get_by_text(CONFIRM_BUTTON_TEXT, exact=True).first
-        if await confirm_btn.count() > 0:
-            await confirm_btn.click()
-            await self._screenshot("after_confirm")
+        await page.wait_for_timeout(SUBMIT_SETTLE_MS)
+        await self._screenshot("after_submit_1s")
 
         try:
             await page.get_by_text(SUCCESS_TEXT).first.wait_for(timeout=SUCCESS_TIMEOUT_MS)
         except PlaywrightTimeoutError as exc:
+            # Nothing here says the order failed — only that we did not
+            # recognise the reply. SUCCESS_TEXT is still a guess, so keep the
+            # markup: it carries the wording the site actually uses.
             await self._capture_failure("no_confirmation")
             raise BrokerError(
-                "no success confirmation seen after submitting — check the "
-                "no_confirmation screenshot to see whether it actually went through"
+                f"order was sent, but no message matching {SUCCESS_TEXT!r} appeared — "
+                "it may well have gone through. Read the site's real wording out of "
+                f"{PAGE_HTML_NAME} in that run's folder (and the no_confirmation "
+                "screenshot for what was on screen), then correct SUCCESS_TEXT"
             ) from exc
 
         return f"submitted-{order.id}"

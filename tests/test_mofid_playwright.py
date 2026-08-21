@@ -18,7 +18,7 @@ from bot.broker import mofid_playwright
 from bot.broker.base import BrokerError
 from bot.broker.mofid_playwright import MofidPlaywrightClient, _submit_button_text
 from bot.models import Order, OrderType, Side
-from conftest import PASSWORD, USERNAME, page_dump, record, shots
+from conftest import PASSWORD, SHIPPED_SETTLE_MS, USERNAME, page_dump, record, shots
 
 SYMBOL = "دارونو"
 
@@ -228,7 +228,7 @@ async def test_dry_run_fills_the_ticket_but_never_submits(make_client):
     assert await quantity_field.input_value() == "7"
 
 
-async def test_live_buy_order_is_submitted_and_confirmed(make_client):
+async def test_live_buy_order_is_sent(make_client):
     client = make_client(dry_run=False)
     order = an_order(quantity=10)
     await client.login()
@@ -241,7 +241,6 @@ async def test_live_buy_order_is_submitted_and_confirmed(make_client):
     assert seen["side"] == "buy"
     assert seen["quantity"] == "10"
     assert seen["submitClicked"] is True
-    assert seen["confirmClicked"] is True
 
 
 async def test_market_order_keeps_the_prefilled_price(make_client):
@@ -273,9 +272,11 @@ async def test_sell_order_uses_the_sell_controls(make_client):
     assert seen["submitClicked"] is True
 
 
-async def test_order_without_a_confirmation_sheet_still_goes_through(make_client):
-    """Some tickets submit straight away, with no تایید step in between."""
-    client = make_client(dry_run=False, confirm="none")
+async def test_no_confirmation_step_is_taken(make_client):
+    """Sending is final at this broker. The scenario puts a تایید button on
+    screen anyway: clicking one would be a second, unwanted action on a live
+    order, so nothing may touch it."""
+    client = make_client(dry_run=False, confirm_trap=1)
     order = an_order()
     await client.login()
 
@@ -285,15 +286,50 @@ async def test_order_without_a_confirmation_sheet_still_goes_through(make_client
     assert (await record(client))["confirmClicked"] is False
 
 
-async def test_missing_success_message_is_reported(make_client, tmp_path):
-    client = make_client(dry_run=False, confirm="nosuccess")
+async def test_a_second_screenshot_follows_the_first_after_a_pause(make_client, tmp_path, monkeypatch):
+    """The ticket answers a beat after the click, so the shot taken on the
+    spot shows the form mid-flight and the later one shows the outcome — they
+    must not be the same picture."""
+    monkeypatch.setattr(mofid_playwright, "SUBMIT_SETTLE_MS", SHIPPED_SETTLE_MS)
+    client = make_client(dry_run=False, reply=600)  # reply lands mid-wait
     await client.login()
 
-    with pytest.raises(BrokerError, match="no success confirmation seen"):
+    await client.place_order(an_order())
+
+    first = (tmp_path / "shots" / "09_after_submit.png").stat().st_size
+    second = (tmp_path / "shots" / "10_after_submit_1s.png").stat().st_size
+    assert first != second, "both screenshots caught the same screen"
+
+
+async def test_missing_success_message_is_reported(make_client, tmp_path):
+    """SUCCESS_TEXT is still a guess, so a run that does not recognise the
+    reply has to keep the markup — that is where the real wording is."""
+    client = make_client(dry_run=False, outcome="nosuccess")
+    await client.login()
+
+    with pytest.raises(BrokerError, match="no message matching") as excinfo:
         await client.place_order(an_order())
 
+    assert "may well have gone through" in str(excinfo.value)
+    assert mofid_playwright.PAGE_HTML_NAME in str(excinfo.value)
     assert "11_no_confirmation.png" in shots(tmp_path / "shots")
     assert "در حال پردازش" in page_dump(tmp_path / "shots")
+
+
+async def test_the_unrecognised_reply_is_dumped_where_it_happens(make_client, tmp_path):
+    """place_order's catch-all dumps the page for any error, which would hide
+    a regression here — so this drives the inner step directly. The markup has
+    to be kept at the moment the reply goes unrecognised, whatever the layer
+    above happens to do."""
+    client = make_client(dry_run=False, outcome="nosuccess")
+    await client.login()
+
+    with pytest.raises(BrokerError, match="no message matching"):
+        await client._do_place_order(an_order())
+
+    dump = page_dump(tmp_path / "shots")
+    assert dump is not None, "the unrecognised reply left no page.html behind"
+    assert "در حال پردازش" in dump
 
 
 async def test_every_step_leaves_a_numbered_screenshot(make_client, tmp_path):
@@ -312,7 +348,7 @@ async def test_every_step_leaves_a_numbered_screenshot(make_client, tmp_path):
         "07_ticket_opened.png",
         "08_form_filled.png",
         "09_after_submit.png",
-        "10_after_confirm.png",
+        "10_after_submit_1s.png",
     ]
 
 
@@ -409,7 +445,6 @@ def test_fake_site_uses_the_same_selectors_as_the_connector():
         mofid_playwright.SELL_BUTTON_TEXT,
         mofid_playwright.QUANTITY_PLACEHOLDER,
         mofid_playwright.PRICE_PLACEHOLDER,
-        mofid_playwright.CONFIRM_BUTTON_TEXT,
         mofid_playwright.SUCCESS_TEXT,
         _submit_button_text(Side.BUY),
         _submit_button_text(Side.SELL),
