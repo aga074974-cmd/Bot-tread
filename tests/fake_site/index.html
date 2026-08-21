@@ -212,8 +212,20 @@ function openTicket(side) {
     ? ''
     : ` data-cy="oms-order-form-submit-button-${side}"`;
 
+  // symbol=wrong    - the ticket that opened is for a neighbouring symbol
+  // symbol=arabic   - the same symbol, spelled with Arabic yeh and kaf
+  // symbol=missing  - the ticket does not say what it is for
+  const shown = {
+    wrong: rec.symbolOpened + 'فلز',
+    arabic: ' ' + rec.symbolOpened.replace(/ی/g, 'ي').replace(/ک/g, 'ك') + ' ',
+  }[opt('symbol')] ?? rec.symbolOpened;
+  const header = opt('symbol') === 'missing'
+    ? ''
+    : `<span data-cy="order-form-header-symbol-name">${shown}</span>`;
+
   show(`
-    <h2>${side === 'buy' ? 'خرید' : 'فروش'} ${rec.symbolOpened}</h2>
+    <h2>${side === 'buy' ? 'خرید' : 'فروش'}</h2>
+    ${header}
     <span class="label-widget">تعداد</span>
     <input uikeyboard inputmode="decimal" id="quantity" readonly placeholder=""
            data-cy="order-form-input-quantity" onclick="openKeypad('quantity')">

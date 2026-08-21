@@ -255,6 +255,45 @@ async def test_live_buy_order_is_sent(make_client):
     assert seen["submitClicked"] is True
 
 
+async def test_the_ticket_is_confirmed_to_be_for_the_right_symbol(make_client, tmp_path):
+    """The search matches on part of a name, so it can open a neighbour's
+    ticket. A correctly sized order on the wrong symbol is the worst outcome
+    available here, so it is checked before a single digit is entered."""
+    client = make_client(dry_run=False, symbol="wrong")
+    await client.login()
+
+    with pytest.raises(BrokerError, match="landed on a different symbol"):
+        await client.place_order(an_order())
+
+    seen = await record(client)
+    assert seen["keypadPresses"] == []  # stopped before touching the numbers
+    assert seen["submitClicked"] is False
+    assert has_shot(tmp_path / "shots", "wrong_symbol")
+
+
+async def test_a_ticket_that_will_not_say_its_symbol_stops_the_order(make_client, tmp_path):
+    """Fail closed: an order that cannot be confirmed is not worth sending."""
+    client = make_client(dry_run=False, symbol="missing")
+    await client.login()
+
+    with pytest.raises(BrokerError, match="not ordering on a ticket we cannot read"):
+        await client.place_order(an_order())
+
+    assert (await record(client))["submitClicked"] is False
+    assert has_shot(tmp_path / "shots", "symbol_unverified")
+
+
+async def test_the_same_symbol_spelled_differently_still_passes(make_client):
+    """Arabic yeh and kaf, and stray spaces, are the same symbol — the guard
+    must not refuse a perfectly good order over how the text is written.
+    کویر is the test's symbol here precisely because it has both letters."""
+    client = make_client(dry_run=False, symbol="arabic")
+    order = an_order(symbol="کویر")
+    await client.login()
+
+    assert await client.place_order(order) == f"submitted-{order.id}"
+
+
 async def test_the_quantity_box_is_emptied_before_typing(make_client):
     """The box opens pre-filled from the buying power, and being readonly it
     can only be emptied by backspacing on the app's keypad. Whatever it held
@@ -567,6 +606,7 @@ def test_fake_site_uses_the_same_selectors_as_the_connector():
     # data-cy selectors, as [data-cy="name"] — the stand-in must carry each name.
     hooks = [
         *mofid_playwright.APP_MARKERS,
+        mofid_playwright.SYMBOL_HEADER,
         mofid_playwright.QUANTITY_INPUT,
         mofid_playwright.PRICE_INPUT,
         # The stand-in writes the side into this one, so only the stem is literal.

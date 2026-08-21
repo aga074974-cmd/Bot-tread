@@ -37,6 +37,14 @@ _MESSAGES: list[tuple[str, str]] = [
         "رمز عبور در فرم ورود وارد نشد — احتمالاً سایت مفید عوض شده.",
     ),
     (
+        "the search landed on a different symbol",
+        "تیکتی که باز شد مال نماد دیگری بود؛ هیچ سفارشی روی نماد اشتباه فرستاده نشد.",
+    ),
+    (
+        "not ordering on a ticket we cannot read",
+        "نام نماد روی تیکت خوانده نشد، پس سفارش فرستاده نشد — احتمالاً اپ مفید عوض شده.",
+    ),
+    (
         "did not bring up the app's keypad",
         "کیبورد عددی اپ باز نشد و کادر readonly است، پس عدد اصلاً وارد نشد.",
     ),

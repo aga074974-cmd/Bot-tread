@@ -60,6 +60,7 @@ SYMBOL_SEARCH_PLACEHOLDER = "جستجوی نماد"
 BUY_BUTTON_TEXT = "خرید"
 SELL_BUTTON_TEXT = "فروش"
 
+SYMBOL_HEADER = '[data-cy="order-form-header-symbol-name"]'
 QUANTITY_INPUT = '[data-cy="order-form-input-quantity"]'
 PRICE_INPUT = '[data-cy="order-form-input-price"]'
 
@@ -121,6 +122,19 @@ _ASCII_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234
 
 def _digits(text: str) -> str:
     return re.sub(r"\D", "", text.translate(_ASCII_DIGITS))
+
+
+# Persian text arrives written more than one way: Arabic yeh and kaf for the
+# Persian ones, and zero-width joiners that are invisible either way. A symbol
+# typed into the panel and the same symbol shown by the app must still compare
+# equal, or the guard below would refuse every order.
+_LETTERS = str.maketrans({"ي": "ی", "ك": "ک", "\u200c": "", "\u200e": "", "\u200f": ""})
+
+
+def _same_symbol(left: str, right: str) -> bool:
+    return " ".join(left.translate(_LETTERS).split()) == " ".join(
+        right.translate(_LETTERS).split()
+    )
 
 
 def _submit_button_text(side: Side) -> str:
@@ -341,6 +355,31 @@ class MofidPlaywrightClient(BrokerClient):
             await self._capture_failure("error")
             raise BrokerError(f"unexpected error placing order: {exc!r}") from exc
 
+    async def _check_ticket_symbol(self, expected: str) -> None:
+        """The ticket that opened has to be for the symbol we asked for. The
+        search matches on part of a name, so it can land on a neighbour — and
+        a correctly sized order on the wrong symbol is the worst thing this bot
+        could do. If the name cannot be read at all, that is also a stop: an
+        unverifiable order is not worth sending."""
+        assert self._page is not None
+        header = self._page.locator(SYMBOL_HEADER).first
+        if await header.count() == 0:
+            await self._capture_failure("symbol_unverified")
+            raise BrokerError(
+                f"the open ticket does not say which symbol it is for, so it "
+                f"cannot be confirmed as {expected} — "
+                "not ordering on a ticket we cannot read"
+            )
+
+        shown = (await header.inner_text()).strip()
+        if not _same_symbol(shown, expected):
+            await self._capture_failure("wrong_symbol")
+            raise BrokerError(
+                f"the open ticket is for {shown}, not {expected} — "
+                "the search landed on a different symbol, and nothing was ordered"
+            )
+        log.info("ticket confirmed for %s", shown)
+
     async def _first_match(self, root, selectors, what: str, hint: str = "") -> Locator:
         """The first of several shapes that actually matches, or a stop. Nothing
         is clicked on a guess: an order form is not the place for it."""
@@ -466,6 +505,7 @@ class MofidPlaywrightClient(BrokerClient):
         side_button_text = BUY_BUTTON_TEXT if order.side == Side.BUY else SELL_BUTTON_TEXT
         await page.get_by_text(side_button_text, exact=True).first.click()
         await self._screenshot("ticket_opened")
+        await self._check_ticket_symbol(order.symbol)
 
         await self._set_number(QUANTITY_INPUT, order.quantity, "quantity")
         if order.order_type == OrderType.LIMIT:
