@@ -1,0 +1,56 @@
+{# One order per row. Rendered on the dashboard (newest few) and in the
+   history page (all of them), so both stay identical by construction. #}
+{% if orders %}
+<div class="table-wrap">
+  <table>
+    <tr>
+      <th>نماد</th>
+      <th>نوع</th>
+      <th>تعداد</th>
+      <th>زمان</th>
+      <th>وضعیت</th>
+      <th></th>
+    </tr>
+    {% for o in orders %}
+    <tr>
+      <td>{{ o.symbol }}</td>
+      <td>{{ 'خرید' if o.side == 'buy' else 'فروش' }}</td>
+      <td>{{ o.quantity }}</td>
+      <td class="when">
+        <div>{{ o.date_fa }}</div>
+        {% if o.time_fa %}<div class="time">{{ o.time_fa }}</div>{% endif %}
+      </td>
+      <td>
+        {% if o.error_fa %}
+        <button type="button" class="badge {{ o.status }}" data-error="{{ o.error_fa }}"
+                onclick="showError(this)">{{ o.status_fa }}</button>
+        {% else %}
+        <span class="badge {{ o.status }}">{{ o.status_fa }}</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if o.status == 'pending' %}
+        <form class="inline" method="post" action="/orders/{{ o.id }}/cancel">
+          <button class="cancel-btn" type="submit">لغو</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div id="toast" hidden></div>
+<script>
+  let toastTimer;
+  function showError(button) {
+    const toast = document.getElementById('toast');
+    toast.textContent = button.dataset.error;
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.hidden = true; }, 3000);
+  }
+</script>
+{% else %}
+<div class="empty">هنوز سفارشی ثبت نشده.</div>
+{% endif %}

@@ -162,14 +162,37 @@ function openSymbol(symbol) {
 }
 
 // --------------------------------------------------------- order ticket ----
+// The real ticket opens with the quantity box already filled from the
+// account's buying power, in Persian digits. `qty` bends that box:
+//   plain   - an ordinary input (still pre-filled)
+//   fa      - writes back what you type as Persian digits, e.g. ۱٬۲۰۰
+//   sticky  - refuses to be emptied; the pre-filled amount comes straight back
+//   garbled - ends up holding a different number than the one typed
+const QUANTITY_PREFILL = '۱٬۲۳۴';
+
+function toPersianDigits(value) {
+  return value
+    .replace(/\B(?=(\d{3})+(?!\d))/g, '٬')
+    .replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[+d]);
+}
+
 function openTicket(side) {
   rec.side = side;
   show(`
     <h2>${side === 'buy' ? 'خرید' : 'فروش'} ${rec.symbolOpened}</h2>
-    <input id="qty" placeholder="تعداد">
+    <input id="qty" placeholder="تعداد" value="${QUANTITY_PREFILL}">
     <input id="price" placeholder="قیمت" value="${PRICE_PREFILL}">
     <div class="btn" onclick="submitOrder()">${side === 'buy' ? 'ارسال خرید' : 'ارسال فروش'}</div>
     ${navHtml()}`);
+
+  // Assigning .value from script fires no input event, so none of these loop.
+  const box = document.getElementById('qty');
+  const mode = opt('qty', 'plain');
+  box.addEventListener('input', () => {
+    if (mode === 'sticky' && box.value === '') box.value = QUANTITY_PREFILL;
+    if (mode === 'garbled' && box.value !== '') box.value = '۹۹';
+    if (mode === 'fa' && box.value !== '') box.value = toPersianDigits(box.value);
+  });
 }
 
 // Sending is final here — the real broker has no confirmation step. With

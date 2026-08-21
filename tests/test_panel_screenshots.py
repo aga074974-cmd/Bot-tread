@@ -2,28 +2,17 @@
 failed run leaves next to its screenshots."""
 from __future__ import annotations
 
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-
-PANEL_PASSWORD = "panel-test-pass"
-# panel.main reads these at import time and opens the SQLite file eagerly, so
-# they have to be set before the import below — never against a real panel.db.
-os.environ["PANEL_PASSWORD"] = PANEL_PASSWORD
-os.environ["SESSION_SECRET"] = "panel-test-secret"
-os.environ["PANEL_DB_PATH"] = str(Path(tempfile.mkdtemp(prefix="panel-test-")) / "panel.db")
-
-from panel import main as panel_main  # noqa: E402
 
 RUN = "20260820-101500_دارونو_ab12cd34"
 DUMP = "<html><body><p>در حال بارگذاری…</p></body></html>"
 
 
 @pytest.fixture
-def runs_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def runs_dir(panel_main, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A stand-in for logs/screenshots holding one failed run."""
     run = tmp_path / RUN
     run.mkdir(parents=True)
@@ -34,13 +23,8 @@ def runs_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture
-def client(runs_dir: Path) -> TestClient:
-    # No context manager: the panel's startup hook reschedules orders and
-    # starts a purge loop, neither of which belongs in a route test.
-    client = TestClient(panel_main.app)
-    response = client.post("/login", data={"password": PANEL_PASSWORD}, follow_redirects=False)
-    assert response.status_code == 303
-    return client
+def client(runs_dir: Path, panel_client: TestClient) -> TestClient:
+    return panel_client
 
 
 def test_page_dump_is_listed_with_view_and_download_links(client: TestClient):
@@ -101,7 +85,7 @@ def test_files_outside_the_listing_are_refused(client: TestClient, name: str):
     assert "page.html" not in response.text
 
 
-def test_dumps_need_a_login(runs_dir: Path):
+def test_dumps_need_a_login(runs_dir: Path, panel_main):
     anonymous = TestClient(panel_main.app)
 
     listing = anonymous.get("/screenshots", follow_redirects=False)

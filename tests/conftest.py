@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import functools
 import http.server
+import os
+import tempfile
 import threading
 from pathlib import Path
 from urllib.parse import urlencode
@@ -99,6 +101,49 @@ async def record(client: mofid_playwright.MofidPlaywrightClient) -> dict:
 
 def shots(directory: Path) -> list[str]:
     return sorted(p.name for p in Path(directory).glob("*.png"))
+
+
+# ---------------------------------------------------------------------------
+# panel
+# ---------------------------------------------------------------------------
+PANEL_PASSWORD = "panel-test-pass"
+
+# panel.main reads these when it is imported and opens its SQLite file eagerly,
+# so they are set here — conftest is imported before any test module — and
+# never point at a real panel.db.
+os.environ["PANEL_PASSWORD"] = PANEL_PASSWORD
+os.environ["SESSION_SECRET"] = "panel-test-secret"
+os.environ["PANEL_DB_PATH"] = str(Path(tempfile.mkdtemp(prefix="panel-test-")) / "panel.db")
+
+
+@pytest.fixture(scope="session")
+def panel_main():
+    from panel import main
+
+    return main
+
+
+@pytest.fixture
+def panel_store(panel_main, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A database of its own for each test, so orders never leak between them."""
+    from panel.db import OrderStore
+
+    store = OrderStore(str(tmp_path / "panel.db"))
+    monkeypatch.setattr(panel_main, "store", store)
+    return store
+
+
+@pytest.fixture
+def panel_client(panel_main, panel_store):
+    """Signed in. Deliberately not used as a context manager: the panel's
+    startup hook reschedules orders and starts a purge loop, and neither
+    belongs in a route test."""
+    from fastapi.testclient import TestClient
+
+    client = TestClient(panel_main.app)
+    response = client.post("/login", data={"password": PANEL_PASSWORD}, follow_redirects=False)
+    assert response.status_code == 303
+    return client
 
 
 def page_dump(directory: Path) -> str | None:

@@ -17,8 +17,10 @@ def jalali_to_gregorian_str(year: int, month: int, day: int) -> str:
 
 
 def to_jalali_str(dt: datetime | date) -> str:
+    """A plain 1405/05/30 — the month name is spelled out in the order form's
+    dropdown, and repeating it in every row only crowds a phone screen."""
     j = jdatetime.date.fromgregorian(date=dt.date() if isinstance(dt, datetime) else dt)
-    return f"{j.year}-{j.month:02d}-{j.day:02d} ({PERSIAN_MONTHS[j.month - 1]})"
+    return f"{j.year}/{j.month:02d}/{j.day:02d}"
 
 
 def current_jalali_year() -> int:

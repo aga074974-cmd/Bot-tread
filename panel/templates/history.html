@@ -1,0 +1,21 @@
+<!doctype html>
+<html dir="rtl" lang="fa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تاریخچه‌ی سفارش‌ها</title>
+{% include "_style.html" %}
+</head>
+<body>
+<div class="top">
+  <h1>تاریخچه‌ی سفارش‌ها</h1>
+  <a href="/">بازگشت به پنل</a>
+</div>
+
+<div class="card">
+  <h2>همه‌ی سفارش‌ها ({{ orders | length }})</h2>
+  {% include "_orders_table.html" %}
+</div>
+
+</body>
+</html>

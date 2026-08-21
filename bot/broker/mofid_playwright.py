@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Locator, Page
@@ -56,6 +57,16 @@ SELL_BUTTON_TEXT = "فروش"
 QUANTITY_PLACEHOLDER = "تعداد"
 PRICE_PLACEHOLDER = "قیمت"
 SUCCESS_TEXT = "با موفقیت"  # unverified — not seen in captured screenshots yet
+
+
+# The ticket writes numbers back in Persian digits with a thousands separator
+# (۱٬۲۰۰ for a 1200 we typed), so values coming out of it are compared on their
+# digits alone.
+_ASCII_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+
+
+def _digits(text: str) -> str:
+    return re.sub(r"\D", "", text.translate(_ASCII_DIGITS))
 
 
 def _submit_button_text(side: Side) -> str:
@@ -266,6 +277,32 @@ class MofidPlaywrightClient(BrokerClient):
             await self._capture_failure("error")
             raise BrokerError(f"unexpected error placing order: {exc!r}") from exc
 
+    async def _set_quantity(self, field: Locator, quantity: int) -> None:
+        """The ticket arrives with this box already filled from the account's
+        buying power, so it starts on some arbitrary number. Empty it and check
+        that it really is empty, then check that what we typed is what it now
+        reads: either mistake would send an order for the wrong amount, and by
+        then it is a live order."""
+        await field.fill("")
+        leftover = _digits(await field.input_value())
+        if leftover not in ("", "0"):
+            await self._capture_failure("quantity_not_cleared")
+            raise BrokerError(
+                f"the quantity box would not clear — it still reads {leftover}; "
+                "not sending an order for an amount we did not choose"
+            )
+
+        await field.fill(str(quantity))
+        await self._screenshot("quantity_filled")
+
+        entered = _digits(await field.input_value())
+        if entered != str(quantity):
+            await self._capture_failure("quantity_wrong")
+            raise BrokerError(
+                f"the quantity box reads {entered or 'nothing'} after typing {quantity} — "
+                "not sending an order for the wrong amount"
+            )
+
     async def _do_place_order(self, order: Order) -> str:
         assert self._page is not None
         page = self._page
@@ -281,7 +318,7 @@ class MofidPlaywrightClient(BrokerClient):
         await page.get_by_text(side_button_text, exact=True).first.click()
         await self._screenshot("ticket_opened")
 
-        await page.get_by_placeholder(QUANTITY_PLACEHOLDER).fill(str(order.quantity))
+        await self._set_quantity(page.get_by_placeholder(QUANTITY_PLACEHOLDER), order.quantity)
         if order.order_type == OrderType.LIMIT:
             # Market orders leave the price field at its pre-filled last-trade
             # price; only override it for an explicit limit price.

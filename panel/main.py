@@ -18,6 +18,7 @@ from bot.models import Order, OrderStatus, OrderType, Side
 from bot.scheduler import run_order
 from bot.screenshots import BASE_DIR as SCREENSHOT_DIR, purge_old, run_dir
 from panel.db import OrderStore
+from panel.errors import to_persian
 from panel.jalali import PERSIAN_MONTHS, current_jalali_year, jalali_to_gregorian_str, to_jalali_str, today_jalali_ymd
 
 log = logging.getLogger(__name__)
@@ -38,6 +39,10 @@ running_tasks: dict[str, asyncio.Task] = {}
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax")
+
+# The dashboard is read on a phone: it shows the newest few orders and sends
+# the rest to /history, so the form stays reachable without scrolling.
+DASHBOARD_ORDERS = 3
 
 STATUS_FA = {
     "pending": "در انتظار",
@@ -95,6 +100,33 @@ async def on_startup() -> None:
     log.info("panel started, %d pending order(s) rescheduled", len(running_tasks))
 
 
+def _order_rows(rows) -> list[dict]:
+    """One dict per order, ready to render: a Jalali date and a time on their
+    own lines, and the error as the Persian sentence the panel shows."""
+    orders = []
+    for r in rows:
+        scheduled_at = r["scheduled_at"]
+        try:
+            local = parse_tehran_datetime(scheduled_at[:16].replace("T", " "))
+            date_fa, time_fa = to_jalali_str(local), local.strftime("%H:%M")
+        except ValueError:
+            date_fa, time_fa = scheduled_at, ""
+        orders.append(
+            {
+                "id": r["id"],
+                "symbol": r["symbol"],
+                "side": r["side"],
+                "quantity": r["quantity"],
+                "date_fa": date_fa,
+                "time_fa": time_fa,
+                "status": r["status"],
+                "status_fa": STATUS_FA.get(r["status"], r["status"]),
+                "error_fa": to_persian(r["error"]),
+            }
+        )
+    return orders
+
+
 def require_auth(request: Request) -> bool:
     return bool(request.session.get("authenticated"))
 
@@ -123,27 +155,7 @@ async def dashboard(request: Request):
     if not require_auth(request):
         return RedirectResponse("/login", status_code=303)
 
-    rows = await store.list_all()
-    orders = []
-    for r in rows:
-        scheduled_at = r["scheduled_at"]
-        try:
-            local = parse_tehran_datetime(scheduled_at[:16].replace("T", " "))
-            scheduled_at_local = f"{to_jalali_str(local)} {local.strftime('%H:%M')}"
-        except ValueError:
-            scheduled_at_local = scheduled_at
-        orders.append(
-            {
-                "id": r["id"],
-                "symbol": r["symbol"],
-                "side": r["side"],
-                "quantity": r["quantity"],
-                "scheduled_at_local": scheduled_at_local,
-                "status": r["status"],
-                "status_fa": STATUS_FA.get(r["status"], r["status"]),
-                "error": r["error"],
-            }
-        )
+    orders = _order_rows(await store.list_all())
 
     flash = request.session.pop("flash", None)
     flash_error = request.session.pop("flash_error", False)
@@ -154,7 +166,8 @@ async def dashboard(request: Request):
         request,
         "dashboard.html",
         {
-            "orders": orders,
+            "orders": orders[:DASHBOARD_ORDERS],
+            "hidden_count": max(0, len(orders) - DASHBOARD_ORDERS),
             "flash": flash,
             "flash_error": flash_error,
             "months": list(enumerate(PERSIAN_MONTHS, start=1)),
@@ -214,6 +227,15 @@ async def cancel_order(request: Request, order_id: str):
     request.session["flash"] = "سفارش لغو شد." if changed else "این سفارش دیگر قابل لغو نیست."
     request.session["flash_error"] = not changed
     return RedirectResponse("/", status_code=303)
+
+
+@app.get("/history", response_class=HTMLResponse)
+async def history(request: Request):
+    if not require_auth(request):
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(
+        request, "history.html", {"orders": _order_rows(await store.list_all())}
+    )
 
 
 def _screenshot_runs() -> list[dict]:

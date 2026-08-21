@@ -243,6 +243,62 @@ async def test_live_buy_order_is_sent(make_client):
     assert seen["submitClicked"] is True
 
 
+async def test_the_quantity_box_is_emptied_before_typing(make_client):
+    """The box opens pre-filled from the buying power, so whatever it held
+    must be gone: the order goes out for the number we asked for, not for
+    something built on top of the balance."""
+    client = make_client(dry_run=False)
+    await client.login()
+
+    await client.place_order(an_order(quantity=80))
+
+    assert (await record(client))["quantity"] == "80"
+
+
+async def test_a_box_that_will_not_empty_stops_the_order(make_client, tmp_path):
+    client = make_client(dry_run=False, qty="sticky")
+    await client.login()
+
+    with pytest.raises(BrokerError, match="would not clear"):
+        await client.place_order(an_order(quantity=80))
+
+    assert (await record(client))["submitClicked"] is False
+    assert "08_quantity_not_cleared.png" in shots(tmp_path / "shots")
+
+
+async def test_a_box_holding_the_wrong_number_stops_the_order(make_client, tmp_path):
+    """Typed 80, box reads 99: sending that would buy the wrong amount."""
+    client = make_client(dry_run=False, qty="garbled")
+    await client.login()
+
+    with pytest.raises(BrokerError, match="reads 99 after typing 80"):
+        await client.place_order(an_order(quantity=80))
+
+    assert (await record(client))["submitClicked"] is False
+    assert "09_quantity_wrong.png" in shots(tmp_path / "shots")
+
+
+async def test_a_box_that_answers_in_persian_digits_is_fine(make_client):
+    """۸۰ and ۱٬۲۰۰ are the same numbers as 80 and 1200 — the check compares
+    digits, so a box that reformats what we type is not an error."""
+    client = make_client(dry_run=False, qty="fa")
+    order = an_order(quantity=1200)
+    await client.login()
+
+    assert await client.place_order(order) == f"submitted-{order.id}"
+    assert (await record(client))["quantity"] == "۱٬۲۰۰"
+
+
+async def test_the_typed_quantity_is_photographed(make_client, tmp_path):
+    """A screenshot of the box with the amount in it, before anything is sent."""
+    client = make_client(dry_run=True)
+    await client.login()
+
+    await client.place_order(an_order(quantity=80))
+
+    assert "08_quantity_filled.png" in shots(tmp_path / "shots")
+
+
 async def test_market_order_keeps_the_prefilled_price(make_client):
     client = make_client(dry_run=False)
     await client.login()
@@ -296,8 +352,8 @@ async def test_a_second_screenshot_follows_the_first_after_a_pause(make_client, 
 
     await client.place_order(an_order())
 
-    first = (tmp_path / "shots" / "09_after_submit.png").stat().st_size
-    second = (tmp_path / "shots" / "10_after_submit_1s.png").stat().st_size
+    first = (tmp_path / "shots" / "10_after_submit.png").stat().st_size
+    second = (tmp_path / "shots" / "11_after_submit_1s.png").stat().st_size
     assert first != second, "both screenshots caught the same screen"
 
 
@@ -312,7 +368,7 @@ async def test_missing_success_message_is_reported(make_client, tmp_path):
 
     assert "may well have gone through" in str(excinfo.value)
     assert mofid_playwright.PAGE_HTML_NAME in str(excinfo.value)
-    assert "11_no_confirmation.png" in shots(tmp_path / "shots")
+    assert "12_no_confirmation.png" in shots(tmp_path / "shots")
     assert "در حال پردازش" in page_dump(tmp_path / "shots")
 
 
@@ -346,9 +402,10 @@ async def test_every_step_leaves_a_numbered_screenshot(make_client, tmp_path):
         "05_search.png",
         "06_symbol_page.png",
         "07_ticket_opened.png",
-        "08_form_filled.png",
-        "09_after_submit.png",
-        "10_after_submit_1s.png",
+        "08_quantity_filled.png",
+        "09_form_filled.png",
+        "10_after_submit.png",
+        "11_after_submit_1s.png",
     ]
 
 

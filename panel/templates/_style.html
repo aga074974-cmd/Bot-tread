@@ -1,0 +1,40 @@
+{# Shared look for the dashboard and the history page. #}
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 1rem; }
+  h1 { font-size: 1.2rem; margin: 0; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+  .top a { color: #94a3b8; font-size: 0.85rem; text-decoration: none; white-space: nowrap; }
+  .card { background: #1e293b; border-radius: 12px; padding: 1.2rem; margin-bottom: 1.2rem; }
+  .card h2 { font-size: 1rem; margin-top: 0; }
+  label { display: block; font-size: 0.85rem; color: #94a3b8; margin-top: 0.8rem; }
+  input, select { width: 100%; box-sizing: border-box; padding: 0.6rem; margin-top: 0.3rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 1rem; }
+  .row { display: flex; gap: 0.6rem; }
+  .row > div { flex: 1; }
+  button.submit { width: 100%; padding: 0.8rem; border: none; border-radius: 8px; background: #22c55e; color: #06210f; font-weight: bold; font-size: 1rem; margin-top: 1.2rem; }
+  /* A phone is narrower than this table wants to be; let it scroll on its own
+     instead of stretching the page sideways. */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { padding: 0.5rem 0.4rem; text-align: right; border-bottom: 1px solid #334155; white-space: nowrap; }
+  .when div { line-height: 1.5; }
+  .when .time { color: #94a3b8; font-size: 0.8rem; }
+  .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-family: inherit; border: none; }
+  button.badge { cursor: pointer; text-decoration: underline dotted; }
+  .pending { background: #334155; color: #cbd5e1; }
+  .sent { background: #14532d; color: #86efac; }
+  .failed { background: #450a0a; color: #fca5a5; }
+  .skipped { background: #422006; color: #fdba74; }
+  form.inline { display: inline; }
+  .cancel-btn { background: none; border: 1px solid #475569; color: #94a3b8; border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.75rem; font-family: inherit; }
+  .empty { color: #64748b; font-size: 0.85rem; }
+  .more { display: block; margin-top: 0.9rem; color: #38bdf8; font-size: 0.85rem; text-decoration: none; }
+  .flash { background: #14532d; color: #86efac; padding: 0.6rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; }
+  .flash.error { background: #450a0a; color: #fca5a5; }
+  /* The error toast: tapping a status that carries one brings it up here,
+     over the page, for a few seconds. */
+  #toast { position: fixed; inset-inline: 1rem; bottom: 1rem; background: #450a0a; color: #fecaca;
+           border: 1px solid #7f1d1d; border-radius: 10px; padding: 0.8rem 1rem; font-size: 0.85rem;
+           line-height: 1.7; z-index: 10; }
+  #toast[hidden] { display: none; }
+</style>
