@@ -24,6 +24,7 @@ class Settings:
     grace_period_seconds: int
     max_retries: int
     retry_delay_seconds: float
+    retry_deadline_seconds: int
     storage_state_path: str
     screenshot_retention_days: int
 
@@ -41,6 +42,7 @@ class Settings:
             grace_period_seconds=int(os.getenv("GRACE_PERIOD_SECONDS", "120")),
             max_retries=int(os.getenv("MAX_RETRIES", "5")),
             retry_delay_seconds=float(os.getenv("RETRY_DELAY_SECONDS", "2")),
+            retry_deadline_seconds=int(os.getenv("RETRY_DEADLINE_SECONDS", "90")),
             storage_state_path=os.getenv("STORAGE_STATE_PATH", "auth_state.json"),
             screenshot_retention_days=int(os.getenv("SCREENSHOT_RETENTION_DAYS", "3")),
         )

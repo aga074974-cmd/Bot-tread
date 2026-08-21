@@ -23,9 +23,13 @@ PASSWORD_INPUT = "#password"
 LOGIN_SUBMIT = "button[type='submit']"
 LOGIN_ERROR = "#alert-item"  # the site's own banner, e.g. a wrong password
 
-# Whether the app is up is decided on several of its labels rather than one:
-# any single one could be renamed or A/B tested without the app being gone.
-APP_MARKERS = ("دیده‌بان", "جستجو", "قدرت خرید")
+# The bottom bar, by the app's own test hooks (see the data-cy note below).
+# Any one of them on screen means we are inside the app.
+NAVBAR_MARKET_WATCH = '[data-cy="main-navbar-market-watch"]'
+NAVBAR_SEARCH = '[data-cy="main-navbar-search"]'
+NAVBAR_PORTFOLIO = '[data-cy="main-navbar-portfolio"]'
+NAVBAR_ORDER = '[data-cy="main-navbar-order"]'
+APP_MARKERS = (NAVBAR_MARKET_WATCH, NAVBAR_SEARCH, NAVBAR_PORTFOLIO, NAVBAR_ORDER)
 
 # The site is an Angular SPA behind an OAuth redirect, so nothing is on the
 # page at load time. Every step waits for its element rather than assuming
@@ -44,19 +48,69 @@ SUBMIT_SETTLE_MS = 1_000
 PAGE_HTML_NAME = "page.html"
 
 # ---------------------------------------------------------------------------
-# Filled in from real screenshots of the order ticket, except where noted.
-# The quantity/price fields *look* like placeholders in the screenshot but
-# could turn out to be separate floating labels once tested live — if
-# place_order() fails, check that run's folder under logs/screenshots/ to see
-# exactly how far it got.
+# The app is built with data-cy attributes — its own developers' test hooks.
+# They survive rewording, so everything confirmed from a captured order page
+# is matched on those. Persian text is left only where no hook was seen: the
+# search page and the symbol page have not been captured yet.
+#
+# (The labels above these boxes are <span class="label-widget">, not
+# placeholders — the same trap the login page sprang.)
 # ---------------------------------------------------------------------------
-SEARCH_TAB_TEXT = "جستجو"  # bottom nav tab
 SYMBOL_SEARCH_PLACEHOLDER = "جستجوی نماد"
 BUY_BUTTON_TEXT = "خرید"
 SELL_BUTTON_TEXT = "فروش"
-QUANTITY_PLACEHOLDER = "تعداد"
-PRICE_PLACEHOLDER = "قیمت"
-SUCCESS_TEXT = "با موفقیت"  # unverified — not seen in captured screenshots yet
+
+QUANTITY_INPUT = '[data-cy="order-form-input-quantity"]'
+PRICE_INPUT = '[data-cy="order-form-input-price"]'
+
+SUCCESS_TEXT = "با موفقیت"  # unverified — not seen in a captured page yet
+
+# Both number boxes are readonly and carry the app's uikeyboard directive, so
+# nothing can be typed into them: clicking one opens the app's own numeric
+# keypad. The app announces that by putting keyboard-open on #root.
+KEYBOARD_OPEN = "#root.keyboard-open"
+KEYPAD_OPEN_TIMEOUT_MS = 5_000
+KEYPAD_HTML_NAME = "keypad.html"
+MAX_CLEAR_PRESSES = 20
+# How many keys a candidate must hold before it counts as the keypad, and
+# how many candidates per shape are worth examining.
+KEYPAD_MIN_KEYS = 3
+MAX_KEYPAD_CANDIDATES = 5
+
+# The keypad's own markup has not been captured yet, so these are the shapes
+# worth trying. Every run saves KEYPAD_HTML_NAME while the keypad is open, and
+# if none of these match, the run stops: on an order form, clicking something
+# we have not identified is worse than not ordering at all.
+KEYPAD_CONTAINERS = (
+    '[data-cy*="keyboard"]',
+    '[data-cy*="keypad"]',
+    "ui-keyboard, app-keyboard, keyboard-widget, numeric-keyboard",
+    '[class*="keyboard"]:not(#root):not(html):not(body)',
+    '[class*="keypad"]',
+    '[id*="keyboard"]:not(#root)',
+)
+KEYPAD_BACKSPACE = (
+    '[data-cy*="backspace"]',
+    '[data-cy*="delete"]',
+    '[data-cy*="clear"]',
+    '[class*="backspace"]',
+    '[class*="delete"]',
+    ':text-is("⌫")',
+    ':text-is("حذف")',
+)
+
+
+def _digit_selectors(digit: str) -> tuple[str, ...]:
+    """Ways one key of the keypad might be written, best first."""
+    persian = "۰۱۲۳۴۵۶۷۸۹"[int(digit)]
+    return (
+        f'[data-cy="keyboard-key-{digit}"]',
+        f'[data-cy$="key-{digit}"]',
+        f'[data-value="{digit}"]',
+        f'[data-key="{digit}"]',
+        f':text-is("{digit}")',
+        f':text-is("{persian}")',
+    )
 
 
 # The ticket writes numbers back in Persian digits with a thousands separator
@@ -71,6 +125,16 @@ def _digits(text: str) -> str:
 
 def _submit_button_text(side: Side) -> str:
     return "ارسال خرید" if side == Side.BUY else "ارسال فروش"
+
+
+def _submit_selectors(side: Side) -> tuple[str, ...]:
+    """The sell hook is confirmed from a captured sell ticket; the buy one is
+    its obvious counterpart but has not been seen, so the button's own text
+    stays behind it as a fallback."""
+    return (
+        f'[data-cy="oms-order-form-submit-button-{side.value}"]',
+        f':text-is("{_submit_button_text(side)}")',
+    )
 
 
 class MofidPlaywrightClient(BrokerClient):
@@ -107,14 +171,14 @@ class MofidPlaywrightClient(BrokerClient):
         except Exception as exc:
             log.warning("failed to save screenshot %s: %s", path, exc)
 
-    async def _save_page_html(self) -> None:
+    async def _save_page_html(self, name: str = PAGE_HTML_NAME) -> None:
         """Dump the live DOM next to that run's screenshots. The screenshot
         shows where a run stopped; the markup shows why — which is what you
         need to retune a selector that no longer matches."""
         if not self._shot_dir or not self._page:
             return
         self._shot_dir.mkdir(parents=True, exist_ok=True)
-        path = self._shot_dir / PAGE_HTML_NAME
+        path = self._shot_dir / name
         try:
             html = await self._page.content()
             path.write_text(html, encoding="utf-8")
@@ -170,9 +234,9 @@ class MofidPlaywrightClient(BrokerClient):
         it can be combined with another locator; add .first before waiting."""
         assert self._page is not None
         first, *rest = APP_MARKERS
-        locator = self._page.get_by_text(first)
+        locator = self._page.locator(first)
         for marker in rest:
-            locator = locator.or_(self._page.get_by_text(marker))
+            locator = locator.or_(self._page.locator(marker))
         return locator
 
     async def _site_error(self) -> str:
@@ -277,29 +341,114 @@ class MofidPlaywrightClient(BrokerClient):
             await self._capture_failure("error")
             raise BrokerError(f"unexpected error placing order: {exc!r}") from exc
 
-    async def _set_quantity(self, field: Locator, quantity: int) -> None:
-        """The ticket arrives with this box already filled from the account's
-        buying power, so it starts on some arbitrary number. Empty it and check
-        that it really is empty, then check that what we typed is what it now
-        reads: either mistake would send an order for the wrong amount, and by
-        then it is a live order."""
-        await field.fill("")
-        leftover = _digits(await field.input_value())
-        if leftover not in ("", "0"):
-            await self._capture_failure("quantity_not_cleared")
-            raise BrokerError(
-                f"the quantity box would not clear — it still reads {leftover}; "
-                "not sending an order for an amount we did not choose"
-            )
+    async def _first_match(self, root, selectors, what: str, hint: str = "") -> Locator:
+        """The first of several shapes that actually matches, or a stop. Nothing
+        is clicked on a guess: an order form is not the place for it."""
+        for selector in selectors:
+            candidate = root.locator(selector).first
+            if await candidate.count() > 0:
+                return candidate
+        await self._capture_failure(f"missing_{what}")
+        raise BrokerError(f"could not find the {what} on the order form{hint}")
 
-        await field.fill(str(quantity))
-        await self._screenshot("quantity_filled")
+    async def _open_keypad(self, field: Locator, what: str) -> Locator:
+        """The box is readonly and driven by the app's own keypad, so it is
+        opened the way a finger opens it — by tapping the box. The calculator
+        and lock icons beside these boxes are other tools; they are left alone."""
+        assert self._page is not None
+        await field.click()
+        try:
+            await self._page.locator(KEYBOARD_OPEN).first.wait_for(
+                state="attached", timeout=KEYPAD_OPEN_TIMEOUT_MS
+            )
+        except PlaywrightTimeoutError as exc:
+            await self._capture_failure(f"{what}_keypad_missing")
+            raise BrokerError(
+                f"tapping the {what} box did not bring up the app's keypad, and "
+                "the box itself is readonly — so the number cannot be entered at all"
+            ) from exc
+
+        await self._screenshot(f"{what}_keypad")
+        # However this run ends, the keypad's markup is now on record.
+        await self._save_page_html(KEYPAD_HTML_NAME)
+
+        return await self._find_keypad()
+
+    async def _holds_keys(self, candidate: Locator) -> bool:
+        """Whether something is the keypad itself rather than one of its keys:
+        a keypad has several digits inside it."""
+        found = 0
+        for digit in "0123456789":
+            for selector in _digit_selectors(digit):
+                if await candidate.locator(selector).first.count() > 0:
+                    found += 1
+                    break
+            if found >= KEYPAD_MIN_KEYS:
+                return True
+        return False
+
+    async def _find_keypad(self) -> Locator:
+        """The keypad's markup has not been captured yet, so this tries the
+        shapes it might have — and accepts only one that actually holds keys,
+        since the patterns match a single key just as happily as the panel."""
+        assert self._page is not None
+        for selector in KEYPAD_CONTAINERS:
+            candidates = await self._page.locator(selector).all()
+            for candidate in candidates[:MAX_KEYPAD_CANDIDATES]:
+                if await self._holds_keys(candidate):
+                    return candidate
+
+        await self._capture_failure("keypad_unrecognised")
+        raise BrokerError(
+            "the app's keypad opened but none of its keys were recognised — "
+            f"{KEYPAD_HTML_NAME} in this run's folder has its markup, and "
+            "nothing was clicked blindly"
+        )
+
+    async def _clear_number(self, field: Locator, keypad: Locator, what: str) -> None:
+        """The box opens pre-filled from the account's buying power, so it holds
+        an arbitrary number. Backspace it away key by key — there is no other way
+        into a readonly box — and stop the order if it will not empty."""
+        backspace = await self._first_match(
+            keypad, KEYPAD_BACKSPACE, "keypad backspace key",
+            hint=f" — see {KEYPAD_HTML_NAME} in this run's folder",
+        )
+        for _ in range(MAX_CLEAR_PRESSES):
+            if not _digits(await field.input_value()):
+                return
+            await backspace.click()
+
+        await self._capture_failure(f"{what}_not_cleared")
+        raise BrokerError(
+            f"the {what} box would not clear — it still reads "
+            f"{_digits(await field.input_value())}; not sending an order for an "
+            "amount we did not choose"
+        )
+
+    async def _set_number(self, selector: str, value: int, what: str) -> None:
+        """Put one number into one of the order form's readonly boxes, and be
+        sure it landed: both mistakes possible here — a leftover digit, or a key
+        that entered something else — would send a live order for the wrong
+        amount."""
+        assert self._page is not None
+        field = await self._first_match(self._page, (selector,), f"{what} box")
+
+        keypad = await self._open_keypad(field, what)
+        await self._clear_number(field, keypad, what)
+        for digit in str(value):
+            key = await self._first_match(
+                keypad, _digit_selectors(digit), f"keypad key {digit}",
+                hint=f" — see {KEYPAD_HTML_NAME} in this run's folder",
+            )
+            await key.click()
+
+        await self._screenshot(f"{what}_filled")
 
         entered = _digits(await field.input_value())
-        if entered != str(quantity):
-            await self._capture_failure("quantity_wrong")
+        if entered != str(value):
+            await self._capture_failure(f"{what}_wrong")
             raise BrokerError(
-                f"the quantity box reads {entered or 'nothing'} after typing {quantity} — "
+                f"the {what} box reads {entered or 'nothing'} after entering {value} — "
                 "not sending an order for the wrong amount"
             )
 
@@ -308,7 +457,7 @@ class MofidPlaywrightClient(BrokerClient):
         page = self._page
 
         await self._screenshot("landing")
-        await page.get_by_text(SEARCH_TAB_TEXT, exact=True).first.click()
+        await page.locator(NAVBAR_SEARCH).first.click()
         await page.get_by_placeholder(SYMBOL_SEARCH_PLACEHOLDER).fill(order.symbol)
         await self._screenshot("search")
         await page.get_by_text(order.symbol, exact=False).first.click()
@@ -318,11 +467,11 @@ class MofidPlaywrightClient(BrokerClient):
         await page.get_by_text(side_button_text, exact=True).first.click()
         await self._screenshot("ticket_opened")
 
-        await self._set_quantity(page.get_by_placeholder(QUANTITY_PLACEHOLDER), order.quantity)
+        await self._set_number(QUANTITY_INPUT, order.quantity, "quantity")
         if order.order_type == OrderType.LIMIT:
-            # Market orders leave the price field at its pre-filled last-trade
+            # Market orders leave the price box on its pre-filled last-trade
             # price; only override it for an explicit limit price.
-            await page.get_by_placeholder(PRICE_PLACEHOLDER).fill(str(order.price))
+            await self._set_number(PRICE_INPUT, order.price, "price")
         await self._screenshot("form_filled")
 
         if self.dry_run:
@@ -338,7 +487,10 @@ class MofidPlaywrightClient(BrokerClient):
 
         # There is no confirmation step at this broker: the send button places
         # the order, so by this point it is already live.
-        await page.get_by_text(_submit_button_text(order.side), exact=True).first.click()
+        submit = await self._first_match(
+            page, _submit_selectors(order.side), f"{order.side.value} send button"
+        )
+        await submit.click()
         await self._screenshot("after_submit")
 
         await page.wait_for_timeout(SUBMIT_SETTLE_MS)

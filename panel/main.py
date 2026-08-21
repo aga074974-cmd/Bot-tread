@@ -76,6 +76,7 @@ def schedule(order: Order) -> None:
             grace_period_seconds=settings.grace_period_seconds,
             max_retries=settings.max_retries,
             retry_delay_seconds=settings.retry_delay_seconds,
+            retry_deadline_seconds=settings.retry_deadline_seconds,
             on_status_change=on_status_change,
         )
     )

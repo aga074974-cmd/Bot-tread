@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
 from bot.broker.base import BrokerClient
@@ -11,6 +11,11 @@ from bot.models import Order, OrderStatus
 log = logging.getLogger(__name__)
 
 BrokerFactory = Callable[[Order], BrokerClient]
+
+# Written into an order's error when retrying was cut short by the deadline
+# rather than by running out of attempts. panel/errors.py reads it from here,
+# so the two cannot drift apart.
+RETRY_DEADLINE_MARK = "stopped: past the retry deadline"
 StatusCallback = Callable[[Order], Awaitable[None]] | Callable[[Order], None] | None
 
 
@@ -38,6 +43,7 @@ async def run_order(
     grace_period_seconds: int,
     max_retries: int,
     retry_delay_seconds: float,
+    retry_deadline_seconds: int,
     on_status_change: StatusCallback = None,
 ) -> None:
     """Wait until an order's scheduled time, then submit it via its own,
@@ -56,6 +62,13 @@ async def run_order(
 
     await _sleep_until(order.scheduled_at)
 
+    # Each retry costs a browser launch and a login, so a handful of them can
+    # run minutes past the scheduled time — by which point the price this order
+    # was timed for is gone. Retrying stops at this deadline whether or not the
+    # attempts are used up. A single attempt already under way is not cut off:
+    # interrupting a half-sent order would be worse than finishing it.
+    deadline = order.scheduled_at + timedelta(seconds=retry_deadline_seconds)
+
     attempt = 0
     while True:
         attempt += 1
@@ -73,12 +86,26 @@ async def run_order(
             # retry/fail/notify instead of silently killing this task (which
             # would leave the order stuck at "pending" forever).
             log.error("order %s attempt %s/%s failed: %r", order.id, attempt, max_retries, exc, exc_info=True)
+
+            late_by = (datetime.now(timezone.utc) - order.scheduled_at).total_seconds()
+            if datetime.now(timezone.utc) >= deadline:
+                order.status = OrderStatus.FAILED
+                order.error = f"{str(exc) or repr(exc)} — {RETRY_DEADLINE_MARK}"
+                log.error(
+                    "order %s (%s) abandoned %.0fs past its time (deadline %ss): "
+                    "too late to be the order that was asked for",
+                    order.id, order.symbol, late_by, retry_deadline_seconds,
+                )
+                await _notify(on_status_change, order)
+                return
+
             if attempt >= max_retries:
                 order.status = OrderStatus.FAILED
                 order.error = str(exc) or repr(exc)
                 log.error("order %s (%s) exhausted retries, giving up", order.id, order.symbol)
                 await _notify(on_status_change, order)
                 return
+
             await asyncio.sleep(retry_delay_seconds)
 
 
@@ -88,6 +115,7 @@ async def run_all(
     grace_period_seconds: int,
     max_retries: int,
     retry_delay_seconds: float,
+    retry_deadline_seconds: int,
 ) -> None:
     if not orders:
         log.warning("no orders loaded, nothing to schedule")
@@ -97,7 +125,16 @@ async def run_all(
         log.info("scheduled: %s %s x%s at %s", order.side.value, order.symbol, order.quantity, order.scheduled_at.isoformat())
 
     tasks = [
-        asyncio.create_task(run_order(order, broker_factory, grace_period_seconds, max_retries, retry_delay_seconds))
+        asyncio.create_task(
+            run_order(
+                order,
+                broker_factory,
+                grace_period_seconds,
+                max_retries,
+                retry_delay_seconds,
+                retry_deadline_seconds,
+            )
+        )
         for order in orders
     ]
     await asyncio.gather(*tasks)

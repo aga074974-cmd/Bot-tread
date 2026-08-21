@@ -16,10 +16,19 @@
   .nav { position: fixed; inset-inline: 0; bottom: 0; display: flex; justify-content: space-around; background: #eee; padding: 10px 0; }
   .nav div { cursor: pointer; }
   .toast { background: #0a6; color: #fff; padding: 12px; border-radius: 6px; }
+  #keypad:empty { display: none; }
+  #keypad > div { position: fixed; inset-inline: 0; bottom: 0; background: #ddd; padding: 8px;
+                  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  #keypad button { padding: 14px; font-size: 18px; }
 </style>
 </head>
 <body>
-<div id="root"></div>
+<!-- The real app renders inside <div id="root"> and adds keyboard-open to it
+     while its numeric keypad is up. Both are reproduced here. -->
+<div id="root">
+  <div id="screen"></div>
+  <div id="keypad"></div>
+</div>
 <script>
 // A stand-in for m.easytrader.ir's mobile UI: same Persian labels and the same
 // screen order as the real app, so the connector can be driven end to end
@@ -41,14 +50,21 @@ const rec = window.__record = {
   price: null,
   submitClicked: false,
   confirmClicked: false,
+  keypadPresses: [],
   userAgent: navigator.userAgent,
   viewportWidth: window.innerWidth,
   hasTouch: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
 };
 
 const root = document.getElementById('root');
-const show = html => { root.innerHTML = html; };
-const PRICE_PREFILL = '12500';
+const screen = document.getElementById('screen');
+const show = html => { screen.innerHTML = html; closeKeypad(); };
+
+// Both number boxes open pre-filled — the real ones come from the account's
+// buying power and the last trade — and both display Persian digits, which is
+// what the connector has to read back through.
+const PREFILL = { quantity: '1234', price: '12500' };
+const raw = { ...PREFILL };
 
 // ---------------------------------------------------------------- login ----
 // Mirrors the real login inputs, which are wired to an on-screen keyboard
@@ -123,21 +139,22 @@ function submitLogin() {
 }
 
 // ------------------------------------------------------------ app shell ----
-// The connector treats any of دیده‌بان / جستجو / قدرت خرید as proof that the
-// app is up. `markers` renders only one of them, so each can be tested alone.
+// The connector treats any item of the app's own bottom bar as proof that it
+// is inside the app. `markers` renders only one of them, so each can be
+// tested on its own.
 const marker = name => ['all', name].includes(opt('markers', 'all'));
 
 function navHtml() {
-  const tabs = ['<div onclick="renderApp()">خانه</div>'];
-  if (marker('watch')) tabs.push('<div>دیده‌بان</div>');
-  if (marker('search')) tabs.push('<div onclick="renderSearch()">جستجو</div>');
-  tabs.push('<div>پرتفوی</div>');
+  const tabs = [];
+  if (marker('watch')) tabs.push('<a role="button" data-cy="main-navbar-market-watch">دیده‌بان</a>');
+  if (marker('search')) tabs.push('<a role="button" data-cy="main-navbar-search" onclick="renderSearch()">جستجو</a>');
+  if (marker('portfolio')) tabs.push('<a role="button" data-cy="main-navbar-portfolio">پرتفوی</a>');
+  if (marker('order')) tabs.push('<a role="button" data-cy="main-navbar-order">سفارش‌ها</a>');
   return `<div class="nav">${tabs.join('')}</div>`;
 }
 
 function renderApp() {
-  const power = marker('power') ? '<p>قدرت خرید: ۱۲٬۵۰۰٬۰۰۰ ریال</p>' : '';
-  show(`<h2>خانه</h2><p>وضعیت بازار</p>${power}${navHtml()}`);
+  show(`<h2>خانه</h2><p>وضعیت بازار</p><span data-cy="account-balance-value">۱۲٬۵۰۰٬۰۰۰</span>${navHtml()}`);
 }
 
 function renderSearch() {
@@ -155,44 +172,101 @@ function openSymbol(symbol) {
   rec.symbolOpened = symbol;
   show(`
     <h2>${symbol}</h2>
-    <p>آخرین معامله: ${PRICE_PREFILL}</p>
+    <p>آخرین معامله: ${faDigits(PREFILL.price)}</p>
     <div class="btn" onclick="openTicket('buy')">خرید</div>
     <div class="btn" onclick="openTicket('sell')">فروش</div>
     ${navHtml()}`);
 }
 
 // --------------------------------------------------------- order ticket ----
-// The real ticket opens with the quantity box already filled from the
-// account's buying power, in Persian digits. `qty` bends that box:
-//   plain   - an ordinary input (still pre-filled)
-//   fa      - writes back what you type as Persian digits, e.g. ۱٬۲۰۰
-//   sticky  - refuses to be emptied; the pre-filled amount comes straight back
-//   garbled - ends up holding a different number than the one typed
-const QUANTITY_PREFILL = '۱٬۲۳۴';
+// Both boxes are readonly with a uikeyboard attribute, exactly as captured
+// from the real order form: nothing can be typed into them. Tapping one opens
+// the app's keypad, which is announced by keyboard-open on #root.
+//   keypad=text     - keys are plain buttons carrying an ASCII digit (default)
+//   keypad=persian  - the same, labelled with Persian digits
+//   keypad=cy       - keys carry data-cy hooks
+//   keypad=alien    - a keypad whose markup matches nothing we know
+//   keypad=none     - tapping the box opens nothing at all
+//   qty=sticky      - backspace does not delete
+//   qty=garbled     - every key enters a 9
+//   buycy=none      - the buy button has no data-cy, only its Persian text
+let keypadTarget = null;
 
-function toPersianDigits(value) {
+function faDigits(value) {
   return value
     .replace(/\B(?=(\d{3})+(?!\d))/g, '٬')
     .replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 }
 
+function renderField(target) {
+  const box = document.getElementById(target);
+  if (box) box.value = faDigits(raw[target]);
+}
+
 function openTicket(side) {
   rec.side = side;
+  raw.quantity = PREFILL.quantity;
+  raw.price = PREFILL.price;
+
+  const submitCy = side === 'buy' && opt('buycy') === 'none'
+    ? ''
+    : ` data-cy="oms-order-form-submit-button-${side}"`;
+
   show(`
     <h2>${side === 'buy' ? 'خرید' : 'فروش'} ${rec.symbolOpened}</h2>
-    <input id="qty" placeholder="تعداد" value="${QUANTITY_PREFILL}">
-    <input id="price" placeholder="قیمت" value="${PRICE_PREFILL}">
-    <div class="btn" onclick="submitOrder()">${side === 'buy' ? 'ارسال خرید' : 'ارسال فروش'}</div>
+    <span class="label-widget">تعداد</span>
+    <input uikeyboard inputmode="decimal" id="quantity" readonly placeholder=""
+           data-cy="order-form-input-quantity" onclick="openKeypad('quantity')">
+    <span class="label-widget">قیمت</span>
+    <input uikeyboard inputmode="decimal" id="price" readonly placeholder=""
+           data-cy="order-form-input-price" onclick="openKeypad('price')">
+    <button type="button"${submitCy} onclick="submitOrder()">
+      <span class="button-text">${side === 'buy' ? 'ارسال خرید' : 'ارسال فروش'}</span>
+    </button>
     ${navHtml()}`);
 
-  // Assigning .value from script fires no input event, so none of these loop.
-  const box = document.getElementById('qty');
-  const mode = opt('qty', 'plain');
-  box.addEventListener('input', () => {
-    if (mode === 'sticky' && box.value === '') box.value = QUANTITY_PREFILL;
-    if (mode === 'garbled' && box.value !== '') box.value = '۹۹';
-    if (mode === 'fa' && box.value !== '') box.value = toPersianDigits(box.value);
-  });
+  renderField('quantity');
+  renderField('price');
+}
+
+// ---------------------------------------------------------------- keypad ----
+function closeKeypad() {
+  keypadTarget = null;
+  root.classList.remove('keyboard-open');
+  document.getElementById('keypad').innerHTML = '';
+}
+
+function openKeypad(target) {
+  if (opt('keypad') === 'none') return;
+  keypadTarget = target;
+  root.classList.add('keyboard-open');
+
+  const mode = opt('keypad', 'text');
+  const label = d => (mode === 'persian' ? '۰۱۲۳۴۵۶۷۸۹'[d] : String(d));
+  const hook = (name) => (mode === 'cy' ? ` data-cy="keyboard-${name}"` : '');
+
+  const keys = [...Array(10).keys()]
+    .map(d => `<button${hook('key-' + d)} onclick="pressKey('${d}')">${label(d)}</button>`)
+    .join('');
+  const backspace = mode === 'cy'
+    ? '<button data-cy="keyboard-backspace" onclick="pressBackspace()">⌫</button>'
+    : '<button class="backspace" onclick="pressBackspace()">⌫</button>';
+
+  // 'alien' keeps the same keys but wraps them in markup nothing recognises.
+  const cls = mode === 'alien' ? 'zz-panel' : 'numeric-keyboard';
+  document.getElementById('keypad').innerHTML = `<div class="${cls}">${keys}${backspace}</div>`;
+}
+
+function pressKey(digit) {
+  rec.keypadPresses.push(digit);
+  raw[keypadTarget] += (opt('qty') === 'garbled' ? '9' : digit);
+  renderField(keypadTarget);
+}
+
+function pressBackspace() {
+  rec.keypadPresses.push('back');
+  if (opt('qty') !== 'sticky') raw[keypadTarget] = raw[keypadTarget].slice(0, -1);
+  renderField(keypadTarget);
 }
 
 // Sending is final here — the real broker has no confirmation step. With
@@ -204,8 +278,8 @@ const trapHtml = () => opt('confirm_trap')
 
 function submitOrder() {
   rec.submitClicked = true;
-  rec.quantity = document.getElementById('qty').value;
-  rec.price = document.getElementById('price').value;
+  rec.quantity = raw.quantity;
+  rec.price = raw.price;
   // The reply is not instant on the real site; `reply` reproduces that lag,
   // which is the whole reason for the second screenshot.
   show(`<p>در حال ارسال…</p>${trapHtml()}${navHtml()}`);

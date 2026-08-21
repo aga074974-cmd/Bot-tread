@@ -146,6 +146,12 @@ def panel_client(panel_main, panel_store):
     return client
 
 
+def has_shot(directory: Path, label: str) -> bool:
+    """Whether a screenshot with this label was taken, whatever its number.
+    Only test_every_step_leaves_a_numbered_screenshot pins the numbering."""
+    return any(name.endswith(f"_{label}.png") for name in shots(directory))
+
+
 def page_dump(directory: Path) -> str | None:
     """The markup a failed run left behind, or None if it left none."""
     path = Path(directory) / mofid_playwright.PAGE_HTML_NAME

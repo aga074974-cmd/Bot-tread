@@ -16,9 +16,21 @@ import pytest
 
 from bot.broker import mofid_playwright
 from bot.broker.base import BrokerError
-from bot.broker.mofid_playwright import MofidPlaywrightClient, _submit_button_text
+from bot.broker.mofid_playwright import (
+    MofidPlaywrightClient,
+    _submit_button_text,
+    _submit_selectors,
+)
 from bot.models import Order, OrderType, Side
-from conftest import PASSWORD, SHIPPED_SETTLE_MS, USERNAME, page_dump, record, shots
+from conftest import (
+    PASSWORD,
+    SHIPPED_SETTLE_MS,
+    USERNAME,
+    has_shot,
+    page_dump,
+    record,
+    shots,
+)
 
 SYMBOL = "دارونو"
 
@@ -185,10 +197,10 @@ async def test_unreadable_session_file_is_ignored(make_client, tmp_path, caplog)
     assert (await record(client))["loginSubmittedWith"] == [USERNAME, PASSWORD]
 
 
-@pytest.mark.parametrize("only", ["watch", "search", "power"])
+@pytest.mark.parametrize("only", ["watch", "search", "portfolio", "order"])
 async def test_any_single_app_marker_counts_as_reaching_the_app(make_client, only: str):
-    """دیده‌بان, جستجو and قدرت خرید are combined with or_ precisely so that a
-    renamed or missing one does not read as a failed login."""
+    """The bottom bar's own data-cy hooks are combined with or_ precisely so a
+    missing or renamed one does not read as a failed login."""
     client = make_client(markers=only)
 
     await client.login()
@@ -224,8 +236,8 @@ async def test_dry_run_fills_the_ticket_but_never_submits(make_client):
     seen = await record(client)
     assert seen["symbolOpened"] == SYMBOL
     assert seen["submitClicked"] is False
-    quantity_field = client._page.get_by_placeholder(mofid_playwright.QUANTITY_PLACEHOLDER)
-    assert await quantity_field.input_value() == "7"
+    box = client._page.locator(mofid_playwright.QUANTITY_INPUT)
+    assert mofid_playwright._digits(await box.input_value()) == "7"
 
 
 async def test_live_buy_order_is_sent(make_client):
@@ -244,15 +256,71 @@ async def test_live_buy_order_is_sent(make_client):
 
 
 async def test_the_quantity_box_is_emptied_before_typing(make_client):
-    """The box opens pre-filled from the buying power, so whatever it held
-    must be gone: the order goes out for the number we asked for, not for
-    something built on top of the balance."""
+    """The box opens pre-filled from the buying power, and being readonly it
+    can only be emptied by backspacing on the app's keypad. Whatever it held
+    must be gone: the order goes out for the number we asked for."""
     client = make_client(dry_run=False)
     await client.login()
 
     await client.place_order(an_order(quantity=80))
 
-    assert (await record(client))["quantity"] == "80"
+    seen = await record(client)
+    assert seen["quantity"] == "80"
+    assert seen["keypadPresses"][-2:] == ["8", "0"]  # entered key by key
+    assert seen["keypadPresses"][:4] == ["back"] * 4  # after clearing the prefill
+
+
+@pytest.mark.parametrize("keypad", ["text", "persian", "cy"])
+async def test_the_keypad_is_driven_whatever_its_keys_look_like(make_client, keypad: str):
+    """The keypad's own markup has not been captured, so the connector tries
+    several shapes: data-cy hooks, ASCII digits, Persian digits."""
+    client = make_client(dry_run=False, keypad=keypad)
+    order = an_order(quantity=1200)
+    await client.login()
+
+    assert await client.place_order(order) == f"submitted-{order.id}"
+    assert (await record(client))["quantity"] == "1200"
+
+
+async def test_a_box_that_never_opens_a_keypad_stops_the_order(make_client, tmp_path):
+    """Readonly box, no keypad: there is no way in, and pretending otherwise
+    would submit whatever the box happened to hold."""
+    client = make_client(dry_run=False, keypad="none")
+    await client.login()
+
+    with pytest.raises(BrokerError, match="did not bring up the app's keypad"):
+        await client.place_order(an_order(quantity=80))
+
+    assert (await record(client))["submitClicked"] is False
+    assert has_shot(tmp_path / "shots", "quantity_keypad_missing")
+
+
+async def test_an_unrecognised_keypad_is_recorded_not_guessed_at(make_client, tmp_path):
+    """A keypad we cannot identify is a stop, not a reason to start clicking
+    around an order form. The markup is kept so the keys can be named."""
+    client = make_client(dry_run=False, keypad="alien")
+    await client.login()
+
+    with pytest.raises(BrokerError, match="none of its keys were recognised"):
+        await client.place_order(an_order(quantity=80))
+
+    seen = await record(client)
+    assert seen["keypadPresses"] == []  # nothing was pressed on a guess
+    assert seen["submitClicked"] is False
+    assert (tmp_path / "shots" / mofid_playwright.KEYPAD_HTML_NAME).exists()
+
+
+async def test_the_open_keypad_is_kept_on_record(make_client, tmp_path):
+    """Every run saves the keypad's markup, working or not — that is how its
+    keys get named without another live order."""
+    client = make_client(dry_run=True)
+    await client.login()
+
+    await client.place_order(an_order(quantity=80))
+
+    keypad_html = (tmp_path / "shots" / mofid_playwright.KEYPAD_HTML_NAME).read_text(encoding="utf-8")
+    assert "keyboard-open" in keypad_html
+    assert has_shot(tmp_path / "shots", "quantity_keypad")
 
 
 async def test_a_box_that_will_not_empty_stops_the_order(make_client, tmp_path):
@@ -263,40 +331,29 @@ async def test_a_box_that_will_not_empty_stops_the_order(make_client, tmp_path):
         await client.place_order(an_order(quantity=80))
 
     assert (await record(client))["submitClicked"] is False
-    assert "08_quantity_not_cleared.png" in shots(tmp_path / "shots")
+    assert has_shot(tmp_path / "shots", "quantity_not_cleared")
 
 
 async def test_a_box_holding_the_wrong_number_stops_the_order(make_client, tmp_path):
-    """Typed 80, box reads 99: sending that would buy the wrong amount."""
+    """Pressed 8 and 0, box reads 99: sending that would buy the wrong amount."""
     client = make_client(dry_run=False, qty="garbled")
     await client.login()
 
-    with pytest.raises(BrokerError, match="reads 99 after typing 80"):
+    with pytest.raises(BrokerError, match="not sending an order for the wrong amount"):
         await client.place_order(an_order(quantity=80))
 
     assert (await record(client))["submitClicked"] is False
-    assert "09_quantity_wrong.png" in shots(tmp_path / "shots")
+    assert has_shot(tmp_path / "shots", "quantity_wrong")
 
 
-async def test_a_box_that_answers_in_persian_digits_is_fine(make_client):
-    """۸۰ and ۱٬۲۰۰ are the same numbers as 80 and 1200 — the check compares
-    digits, so a box that reformats what we type is not an error."""
-    client = make_client(dry_run=False, qty="fa")
-    order = an_order(quantity=1200)
-    await client.login()
-
-    assert await client.place_order(order) == f"submitted-{order.id}"
-    assert (await record(client))["quantity"] == "۱٬۲۰۰"
-
-
-async def test_the_typed_quantity_is_photographed(make_client, tmp_path):
+async def test_the_entered_quantity_is_photographed(make_client, tmp_path):
     """A screenshot of the box with the amount in it, before anything is sent."""
     client = make_client(dry_run=True)
     await client.login()
 
     await client.place_order(an_order(quantity=80))
 
-    assert "08_quantity_filled.png" in shots(tmp_path / "shots")
+    assert has_shot(tmp_path / "shots", "quantity_filled")
 
 
 async def test_market_order_keeps_the_prefilled_price(make_client):
@@ -309,6 +366,7 @@ async def test_market_order_keeps_the_prefilled_price(make_client):
 
 
 async def test_limit_order_overrides_the_price(make_client):
+    """The price box is readonly too, so it takes the same keypad route."""
     client = make_client(dry_run=False)
     await client.login()
 
@@ -326,6 +384,17 @@ async def test_sell_order_uses_the_sell_controls(make_client):
     seen = await record(client)
     assert seen["side"] == "sell"
     assert seen["submitClicked"] is True
+
+
+async def test_a_buy_button_without_its_hook_is_still_found(make_client):
+    """Only the sell hook was seen on a captured page; the buy one is inferred,
+    so the button's Persian text stays behind it."""
+    client = make_client(dry_run=False, buycy="none")
+    order = an_order()
+    await client.login()
+
+    assert await client.place_order(order) == f"submitted-{order.id}"
+    assert (await record(client))["submitClicked"] is True
 
 
 async def test_no_confirmation_step_is_taken(make_client):
@@ -352,8 +421,8 @@ async def test_a_second_screenshot_follows_the_first_after_a_pause(make_client, 
 
     await client.place_order(an_order())
 
-    first = (tmp_path / "shots" / "10_after_submit.png").stat().st_size
-    second = (tmp_path / "shots" / "11_after_submit_1s.png").stat().st_size
+    first = (tmp_path / "shots" / "11_after_submit.png").stat().st_size
+    second = (tmp_path / "shots" / "12_after_submit_1s.png").stat().st_size
     assert first != second, "both screenshots caught the same screen"
 
 
@@ -368,7 +437,7 @@ async def test_missing_success_message_is_reported(make_client, tmp_path):
 
     assert "may well have gone through" in str(excinfo.value)
     assert mofid_playwright.PAGE_HTML_NAME in str(excinfo.value)
-    assert "12_no_confirmation.png" in shots(tmp_path / "shots")
+    assert has_shot(tmp_path / "shots", "no_confirmation")
     assert "در حال پردازش" in page_dump(tmp_path / "shots")
 
 
@@ -402,10 +471,11 @@ async def test_every_step_leaves_a_numbered_screenshot(make_client, tmp_path):
         "05_search.png",
         "06_symbol_page.png",
         "07_ticket_opened.png",
-        "08_quantity_filled.png",
-        "09_form_filled.png",
-        "10_after_submit.png",
-        "11_after_submit_1s.png",
+        "08_quantity_keypad.png",
+        "09_quantity_filled.png",
+        "10_form_filled.png",
+        "11_after_submit.png",
+        "12_after_submit_1s.png",
     ]
 
 
@@ -494,20 +564,37 @@ def test_fake_site_uses_the_same_selectors_as_the_connector():
     assert not missing_ids, f"tests/fake_site/index.html has no element for: {missing_ids}"
     assert 'type="submit"' in html, f"nothing matches {mofid_playwright.LOGIN_SUBMIT}"
 
-    labels = [
+    # data-cy selectors, as [data-cy="name"] — the stand-in must carry each name.
+    hooks = [
         *mofid_playwright.APP_MARKERS,
-        mofid_playwright.SEARCH_TAB_TEXT,
+        mofid_playwright.QUANTITY_INPUT,
+        mofid_playwright.PRICE_INPUT,
+        # The stand-in writes the side into this one, so only the stem is literal.
+        *(_submit_selectors(side)[0].replace(side.value, "") for side in Side),
+    ]
+    missing_hooks = [h for h in hooks if h.strip("[]").split('"')[1] not in html]
+    assert not missing_hooks, f"tests/fake_site/index.html is missing: {missing_hooks}"
+
+    labels = [
         mofid_playwright.SYMBOL_SEARCH_PLACEHOLDER,
         mofid_playwright.BUY_BUTTON_TEXT,
         mofid_playwright.SELL_BUTTON_TEXT,
-        mofid_playwright.QUANTITY_PLACEHOLDER,
-        mofid_playwright.PRICE_PLACEHOLDER,
         mofid_playwright.SUCCESS_TEXT,
         _submit_button_text(Side.BUY),
         _submit_button_text(Side.SELL),
     ]
     missing = [label for label in labels if label not in html]
     assert not missing, f"tests/fake_site/index.html is missing: {missing}"
+
+
+def test_the_number_boxes_are_readonly_in_the_stand_in():
+    """The real ones are. If this ever stops being reproduced, a connector that
+    went back to typing into them would pass its tests and fail live."""
+    html = (Path(__file__).parent / "fake_site" / "index.html").read_text(encoding="utf-8")
+    ticket = html[html.index('data-cy="order-form-input-quantity"') - 200 :]
+
+    assert "readonly" in ticket[:400]
+    assert "uikeyboard" in ticket[:400]
 
 
 def test_fake_login_form_has_no_placeholders():
