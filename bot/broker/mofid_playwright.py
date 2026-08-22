@@ -40,8 +40,10 @@ PAGE_READY_TIMEOUT_MS = 45_000
 SUCCESS_TIMEOUT_MS = 15_000
 
 # The ticket does not react to the send click straight away, so the shot taken
-# on the spot catches the form mid-flight. This is how long to wait before
-# taking a second one that actually shows the outcome.
+# on the spot catches the form mid-flight. A second shot is taken at the
+# midpoint below and a third once the full settle time has passed, so the
+# reaction is on record whichever of the two it shows up in.
+SUBMIT_MIDPOINT_MS = 500
 SUBMIT_SETTLE_MS = 1_000
 
 # Where a failed run dumps the page's markup, next to that run's screenshots.
@@ -78,22 +80,37 @@ MAX_CLEAR_PRESSES = 20
 KEYPAD_MIN_KEYS = 3
 MAX_KEYPAD_CANDIDATES = 5
 
-# The keypad's own markup has not been captured yet, so these are the shapes
-# worth trying. Every run saves KEYPAD_HTML_NAME while the keypad is open, and
-# if none of these match, the run stops: on an order form, clicking something
-# we have not identified is worse than not ordering at all.
+# Confirmed from a captured keypad.html: the app's numeric keypad is a
+# <ui-keyboard> element, its digit keys are data-cy="easy-keyboard-btn-N", and
+# a single press of easy-keyboard-btn-deleteAll empties the box in one go
+# (easy-keyboard-btn-delete is the plain one-digit backspace next to it). The
+# rest are kept as fallbacks — a different box (price vs quantity) or a future
+# redesign is not guaranteed to reuse the exact same component. Every run
+# saves KEYPAD_HTML_NAME while the keypad is open, and if nothing here
+# matches, the run stops: on an order form, clicking something we have not
+# identified is worse than not ordering at all.
 KEYPAD_CONTAINERS = (
+    "ui-keyboard",
     '[data-cy*="keyboard"]',
     '[data-cy*="keypad"]',
-    "ui-keyboard, app-keyboard, keyboard-widget, numeric-keyboard",
+    "app-keyboard, keyboard-widget, numeric-keyboard",
     '[class*="keyboard"]:not(#root):not(html):not(body)',
     '[class*="keypad"]',
     '[id*="keyboard"]:not(#root)',
 )
+
+# A single press that clears the whole box — tried first, since it is a
+# stronger guarantee of "completely empty" than any number of backspaces.
+KEYPAD_CLEAR_ALL = (
+    '[data-cy="easy-keyboard-btn-deleteAll"]',
+    '[data-cy*="deleteAll"]',
+    '[data-cy*="clearAll"]',
+    ':text-is("پاک کردن")',
+)
 KEYPAD_BACKSPACE = (
+    '[data-cy="easy-keyboard-btn-delete"]',
     '[data-cy*="backspace"]',
     '[data-cy*="delete"]',
-    '[data-cy*="clear"]',
     '[class*="backspace"]',
     '[class*="delete"]',
     ':text-is("⌫")',
@@ -105,8 +122,10 @@ def _digit_selectors(digit: str) -> tuple[str, ...]:
     """Ways one key of the keypad might be written, best first."""
     persian = "۰۱۲۳۴۵۶۷۸۹"[int(digit)]
     return (
+        f'[data-cy="easy-keyboard-btn-{digit}"]',
         f'[data-cy="keyboard-key-{digit}"]',
         f'[data-cy$="key-{digit}"]',
+        f'[data-cy$="btn-{digit}"]',
         f'[data-value="{digit}"]',
         f'[data-key="{digit}"]',
         f':text-is("{digit}")',
@@ -380,13 +399,21 @@ class MofidPlaywrightClient(BrokerClient):
             )
         log.info("ticket confirmed for %s", shown)
 
-    async def _first_match(self, root, selectors, what: str, hint: str = "") -> Locator:
-        """The first of several shapes that actually matches, or a stop. Nothing
-        is clicked on a guess: an order form is not the place for it."""
+    async def _try_match(self, root, selectors) -> Locator | None:
+        """The first of several shapes that actually matches, or None — for a
+        shape that has a fallback if this one turns out not to be there."""
         for selector in selectors:
             candidate = root.locator(selector).first
             if await candidate.count() > 0:
                 return candidate
+        return None
+
+    async def _first_match(self, root, selectors, what: str, hint: str = "") -> Locator:
+        """Like _try_match, but a miss stops the run. Nothing is clicked on a
+        guess: an order form is not the place for it."""
+        match = await self._try_match(root, selectors)
+        if match is not None:
+            return match
         await self._capture_failure(f"missing_{what}")
         raise BrokerError(f"could not find the {what} on the order form{hint}")
 
@@ -453,8 +480,18 @@ class MofidPlaywrightClient(BrokerClient):
 
     async def _clear_number(self, field: Locator, keypad: Locator, what: str) -> None:
         """The box opens pre-filled from the account's buying power, so it holds
-        an arbitrary number. Backspace it away key by key — there is no other way
-        into a readonly box — and stop the order if it will not empty."""
+        an arbitrary number. The keypad's own "clear everything" key (پاک‌کردن,
+        easy-keyboard-btn-deleteAll) is tried first — one press, fully empty.
+        If that key cannot be found, fall back to backspacing it away one digit
+        at a time — there is no other way into a readonly box. Either way, stop
+        the order if it will not empty."""
+        clear_all = await self._try_match(keypad, KEYPAD_CLEAR_ALL)
+        if clear_all is not None:
+            await clear_all.click()
+            if self._is_empty(await field.input_value()):
+                log.info("%s box cleared with the keypad's پاک‌کردن key", what)
+                return
+
         backspace = await self._first_match(
             keypad, KEYPAD_BACKSPACE, "keypad backspace key",
             hint=f" — see {KEYPAD_HTML_NAME} in this run's folder",
@@ -555,7 +592,13 @@ class MofidPlaywrightClient(BrokerClient):
         await submit.click()
         await self._screenshot("after_submit")
 
-        await page.wait_for_timeout(SUBMIT_SETTLE_MS)
+        # However this run ends, a shot at the half-second mark is not
+        # optional: the reaction to a live order is worth having even if
+        # everything after this point goes wrong.
+        await page.wait_for_timeout(SUBMIT_MIDPOINT_MS)
+        await self._screenshot("after_submit_500ms")
+
+        await page.wait_for_timeout(SUBMIT_SETTLE_MS - SUBMIT_MIDPOINT_MS)
         await self._screenshot("after_submit_1s")
 
         try:

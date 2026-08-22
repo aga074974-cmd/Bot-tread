@@ -18,17 +18,20 @@ from bot.broker import mofid_playwright
 from bot.broker.base import BrokerError
 from bot.broker.mofid_playwright import (
     MofidPlaywrightClient,
+    _digit_selectors,
     _submit_button_text,
     _submit_selectors,
 )
 from bot.models import Order, OrderType, Side
 from conftest import (
     PASSWORD,
+    SHIPPED_MIDPOINT_MS,
     SHIPPED_SETTLE_MS,
     USERNAME,
     has_shot,
     page_dump,
     record,
+    shot_named,
     shots,
 )
 
@@ -294,10 +297,11 @@ async def test_the_same_symbol_spelled_differently_still_passes(make_client):
     assert await client.place_order(order) == f"submitted-{order.id}"
 
 
-async def test_the_quantity_box_is_emptied_before_typing(make_client):
+async def test_the_quantity_box_is_cleared_with_the_apps_own_key(make_client):
     """The box opens pre-filled from the buying power, and being readonly it
-    can only be emptied by backspacing on the app's keypad. Whatever it held
-    must be gone: the order goes out for the number we asked for."""
+    can only be emptied through the app's keypad. By default that keypad has
+    its own پاک‌کردن (clear everything) key — confirmed from a captured
+    keypad.html — so clearing is one press, then the digits go in one by one."""
     client = make_client(dry_run=False)
     await client.login()
 
@@ -305,14 +309,29 @@ async def test_the_quantity_box_is_emptied_before_typing(make_client):
 
     seen = await record(client)
     assert seen["quantity"] == "80"
+    assert seen["keypadPresses"] == ["deleteAll", "8", "0"]
+
+
+async def test_a_keypad_without_a_clear_key_falls_back_to_backspacing(make_client):
+    """Not every keypad is guaranteed to have a one-press clear — if it does
+    not, backspacing the prefill away one digit at a time still has to work."""
+    client = make_client(dry_run=False, keypad="nodeleteall")
+    await client.login()
+
+    await client.place_order(an_order(quantity=80))
+
+    seen = await record(client)
+    assert seen["quantity"] == "80"
+    assert "deleteAll" not in seen["keypadPresses"]
     assert seen["keypadPresses"][-2:] == ["8", "0"]  # entered key by key
     assert seen["keypadPresses"][:4] == ["back"] * 4  # after clearing the prefill
 
 
-@pytest.mark.parametrize("keypad", ["text", "persian", "cy"])
+@pytest.mark.parametrize("keypad", ["real", "nodeleteall", "text", "persian", "cy"])
 async def test_the_keypad_is_driven_whatever_its_keys_look_like(make_client, keypad: str):
-    """The keypad's own markup has not been captured, so the connector tries
-    several shapes: data-cy hooks, ASCII digits, Persian digits."""
+    """real is the confirmed shape; the rest are fallbacks the connector still
+    has to cope with if a different box, or a future redesign, looks unlike it:
+    data-cy hooks of another shape, ASCII digits, Persian digits."""
     client = make_client(dry_run=False, keypad=keypad)
     order = an_order(quantity=1200)
     await client.login()
@@ -476,19 +495,46 @@ async def test_no_confirmation_step_is_taken(make_client):
     assert (await record(client))["confirmClicked"] is False
 
 
-async def test_a_second_screenshot_follows_the_first_after_a_pause(make_client, tmp_path, monkeypatch):
-    """The ticket answers a beat after the click, so the shot taken on the
-    spot shows the form mid-flight and the later one shows the outcome — they
-    must not be the same picture."""
-    monkeypatch.setattr(mofid_playwright, "SUBMIT_SETTLE_MS", SHIPPED_SETTLE_MS)
-    client = make_client(dry_run=False, reply=600)  # reply lands mid-wait
+async def test_the_500ms_shot_is_not_a_duplicate_of_the_click_itself(make_client, tmp_path, monkeypatch):
+    """If the site answers within the half-second, the midpoint screenshot has
+    to show that — not the same "sending" screen the one taken on the click
+    already caught."""
+    monkeypatch.setattr(mofid_playwright, "SUBMIT_MIDPOINT_MS", SHIPPED_MIDPOINT_MS)
+    client = make_client(dry_run=False, reply=200)  # lands before the midpoint shot
     await client.login()
 
     await client.place_order(an_order())
 
-    first = (tmp_path / "shots" / "11_after_submit.png").stat().st_size
-    second = (tmp_path / "shots" / "12_after_submit_1s.png").stat().st_size
-    assert first != second, "both screenshots caught the same screen"
+    clicked = shot_named(tmp_path / "shots", "after_submit").stat().st_size
+    midpoint = shot_named(tmp_path / "shots", "after_submit_500ms").stat().st_size
+    assert clicked != midpoint, "the 500ms screenshot caught the same screen as the click"
+
+
+async def test_the_1s_shot_still_follows_the_500ms_one(make_client, tmp_path, monkeypatch):
+    """A reply that lands between the two waits still leaves a distinct
+    picture at each checkpoint."""
+    monkeypatch.setattr(mofid_playwright, "SUBMIT_MIDPOINT_MS", SHIPPED_MIDPOINT_MS)
+    monkeypatch.setattr(mofid_playwright, "SUBMIT_SETTLE_MS", SHIPPED_SETTLE_MS)
+    client = make_client(dry_run=False, reply=600)  # lands between the two waits
+    await client.login()
+
+    await client.place_order(an_order())
+
+    clicked = shot_named(tmp_path / "shots", "after_submit").stat().st_size
+    settled = shot_named(tmp_path / "shots", "after_submit_1s").stat().st_size
+    assert clicked != settled, "the final screenshot caught the same screen as the click"
+
+
+async def test_the_500ms_screenshot_is_taken_even_when_the_order_ends_in_error(make_client, tmp_path):
+    """"حتما" — this shot is not conditioned on how the run turns out. Even a
+    reply the connector never recognises must not skip it."""
+    client = make_client(dry_run=False, outcome="nosuccess")
+    await client.login()
+
+    with pytest.raises(BrokerError, match="no message matching"):
+        await client.place_order(an_order())
+
+    assert has_shot(tmp_path / "shots", "after_submit_500ms")
 
 
 async def test_missing_success_message_is_reported(make_client, tmp_path):
@@ -540,7 +586,8 @@ async def test_every_step_leaves_a_numbered_screenshot(make_client, tmp_path):
         "09_quantity_filled.png",
         "10_form_filled.png",
         "11_after_submit.png",
-        "12_after_submit_1s.png",
+        "12_after_submit_500ms.png",
+        "13_after_submit_1s.png",
     ]
 
 
@@ -635,11 +682,24 @@ def test_fake_site_uses_the_same_selectors_as_the_connector():
         mofid_playwright.SYMBOL_HEADER,
         mofid_playwright.QUANTITY_INPUT,
         mofid_playwright.PRICE_INPUT,
-        # The stand-in writes the side into this one, so only the stem is literal.
+        mofid_playwright.KEYPAD_CLEAR_ALL[0],
+        # The stand-in writes the side, and the keypad's digit, into these two
+        # as a template expression rather than a literal string, so only the
+        # stem of each is checked.
         *(_submit_selectors(side)[0].replace(side.value, "") for side in Side),
     ]
     missing_hooks = [h for h in hooks if h.strip("[]").split('"')[1] not in html]
     assert not missing_hooks, f"tests/fake_site/index.html is missing: {missing_hooks}"
+
+    digit_stem = _digit_selectors("0")[0].split('"')[1].rsplit("-", 1)[0]
+    assert digit_stem in html, (
+        f"tests/fake_site/index.html has no {digit_stem}-N digit key, the "
+        "confirmed shape of the app's own numeric keypad"
+    )
+    assert mofid_playwright.KEYPAD_CONTAINERS[0] in html, (
+        f"tests/fake_site/index.html has no <{mofid_playwright.KEYPAD_CONTAINERS[0]}> — "
+        "the confirmed shape of the app's own numeric keypad"
+    )
 
     labels = [
         mofid_playwright.SYMBOL_SEARCH_PLACEHOLDER,

@@ -182,15 +182,23 @@ function openSymbol(symbol) {
 // Both boxes are readonly with a uikeyboard attribute, exactly as captured
 // from the real order form: nothing can be typed into them. Tapping one opens
 // the app's keypad, which is announced by keyboard-open on #root.
-//   keypad=text     - keys are plain buttons carrying an ASCII digit (default)
-//   keypad=persian  - the same, labelled with Persian digits
-//   keypad=cy       - keys carry data-cy hooks
-//   keypad=alien    - a keypad whose markup matches nothing we know
-//   keypad=none     - tapping the box opens nothing at all
-//   qty=sticky      - backspace does not delete
-//   qty=zerofloor   - the box bottoms out at 0 instead of going empty
-//   qty=garbled     - every key enters a 9
-//   buycy=none      - the buy button has no data-cy, only its Persian text
+//   keypad=real        - a <ui-keyboard> with easy-keyboard-btn-N digits and
+//                         a single easy-keyboard-btn-deleteAll clear key —
+//                         exactly what a captured keypad.html showed (default)
+//   keypad=nodeleteall  - the same shape, minus the deleteAll key, so clearing
+//                         has to fall back to backspacing one digit at a time
+//   keypad=text         - keys are plain buttons carrying an ASCII digit, no
+//                         data-cy at all — nothing but the fallback selectors
+//                         would find them
+//   keypad=persian      - the same, labelled with Persian digits
+//   keypad=cy           - keys carry data-cy hooks of a different shape than
+//                         the real one (keyboard-key-N / keyboard-backspace)
+//   keypad=alien        - a keypad whose markup matches nothing we know
+//   keypad=none         - tapping the box opens nothing at all
+//   qty=sticky          - neither deleteAll nor backspace actually deletes
+//   qty=zerofloor       - clearing bottoms out at 0 instead of going empty
+//   qty=garbled         - every key enters a 9
+//   buycy=none          - the buy button has no data-cy, only its Persian text
 let keypadTarget = null;
 
 function faDigits(value) {
@@ -254,25 +262,46 @@ function openKeypad(target) {
   keypadTarget = target;
   root.classList.add('keyboard-open');
 
-  const mode = opt('keypad', 'text');
+  const mode = opt('keypad', 'real');
+  const isReal = mode === 'real' || mode === 'nodeleteall';
   const label = d => (mode === 'persian' ? '۰۱۲۳۴۵۶۷۸۹'[d] : String(d));
-  const hook = (name) => (mode === 'cy' ? ` data-cy="keyboard-${name}"` : '');
+
+  // Real and cy modes carry data-cy hooks, each under a different name — real
+  // is what the app actually uses, cy is a stand-in for some other shape the
+  // connector's fallback selectors still have to cope with.
+  const digitHook = d => isReal ? ` data-cy="easy-keyboard-btn-${d}"`
+    : mode === 'cy' ? ` data-cy="keyboard-key-${d}"` : '';
+  const backspaceHook = () => isReal ? ' data-cy="easy-keyboard-btn-delete"'
+    : mode === 'cy' ? ' data-cy="keyboard-backspace"' : '';
 
   const keys = [...Array(10).keys()]
-    .map(d => `<button${hook('key-' + d)} onclick="pressKey('${d}')">${label(d)}</button>`)
+    .map(d => `<button${digitHook(d)} onclick="pressKey('${d}')">${label(d)}</button>`)
     .join('');
-  const backspace = mode === 'cy'
-    ? '<button data-cy="keyboard-backspace" onclick="pressBackspace()">⌫</button>'
-    : '<button class="backspace" onclick="pressBackspace()">⌫</button>';
+  const deleteAll = mode === 'real'
+    ? '<button data-cy="easy-keyboard-btn-deleteAll" onclick="pressDeleteAll()">پاک کردن</button>'
+    : '';
+  const backspace = `<button${backspaceHook()} class="backspace" onclick="pressBackspace()">⌫</button>`;
 
   // 'alien' keeps the same keys but wraps them in markup nothing recognises.
+  const tag = isReal ? 'ui-keyboard' : 'div';
   const cls = mode === 'alien' ? 'zz-panel' : 'numeric-keyboard';
-  document.getElementById('keypad').innerHTML = `<div class="${cls}">${keys}${backspace}</div>`;
+  document.getElementById('keypad').innerHTML =
+    `<${tag} class="${cls}">${keys}${deleteAll}${backspace}</${tag}>`;
 }
 
 function pressKey(digit) {
   rec.keypadPresses.push(digit);
   raw[keypadTarget] += (opt('qty') === 'garbled' ? '9' : digit);
+  renderField(keypadTarget);
+}
+
+// The confirmed real keypad's one-press clear. Guarded by the same qty=
+// scenarios as backspace so a box that "will not clear" stays stuck no
+// matter which key is used to try.
+function pressDeleteAll() {
+  rec.keypadPresses.push('deleteAll');
+  if (opt('qty') === 'sticky') return renderField(keypadTarget);
+  raw[keypadTarget] = (opt('qty') === 'zerofloor') ? '0' : '';
   renderField(keypadTarget);
 }
 

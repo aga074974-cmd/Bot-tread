@@ -22,7 +22,9 @@ PASSWORD = "s3cret-pass"
 TEST_READY_TIMEOUT_MS = 10_000
 
 # What the connector ships with, captured before any test shortens it — the
-# test that checks the second screenshot really lags behind the first uses it.
+# test that checks the post-submit screenshots really lag behind each other
+# uses these.
+SHIPPED_MIDPOINT_MS = mofid_playwright.SUBMIT_MIDPOINT_MS
 SHIPPED_SETTLE_MS = mofid_playwright.SUBMIT_SETTLE_MS
 
 
@@ -59,6 +61,7 @@ def site() -> FakeSite:
 def fast_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mofid_playwright, "PAGE_READY_TIMEOUT_MS", TEST_READY_TIMEOUT_MS)
     monkeypatch.setattr(mofid_playwright, "SUCCESS_TIMEOUT_MS", 3_000)
+    monkeypatch.setattr(mofid_playwright, "SUBMIT_MIDPOINT_MS", 50)
     monkeypatch.setattr(mofid_playwright, "SUBMIT_SETTLE_MS", 150)
 
 
@@ -150,6 +153,14 @@ def has_shot(directory: Path, label: str) -> bool:
     """Whether a screenshot with this label was taken, whatever its number.
     Only test_every_step_leaves_a_numbered_screenshot pins the numbering."""
     return any(name.endswith(f"_{label}.png") for name in shots(directory))
+
+
+def shot_named(directory: Path, label: str) -> Path:
+    """The actual numbered file for a label, whatever its number turned out
+    to be — for a test that needs the file itself, not just whether it exists."""
+    matches = [name for name in shots(directory) if name.endswith(f"_{label}.png")]
+    assert len(matches) == 1, f"expected exactly one shot for {label!r}, found {matches}"
+    return Path(directory) / matches[0]
 
 
 def page_dump(directory: Path) -> str | None:
