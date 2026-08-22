@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,7 +12,26 @@ from dotenv import load_dotenv
 
 from bot.models import Order, OrderType, Side
 
+log = logging.getLogger(__name__)
+
 TEHRAN_TZ = ZoneInfo("Asia/Tehran")
+
+_FALSE_VALUES = ("false", "0", "no")
+_TRUE_VALUES = ("true", "1", "yes")
+
+
+def _parse_bool(name: str, default: str) -> bool:
+    """A typo here (DRY_RUN=fasle) does not raise — it silently reads as
+    "true", which for DRY_RUN means every order quietly fills the form and
+    never sends it. Anything not recognised as true or false is logged, so
+    that failure mode is loud instead of silent."""
+    raw = os.getenv(name, default).strip().lower()
+    if raw not in _FALSE_VALUES and raw not in _TRUE_VALUES:
+        log.warning(
+            "%s=%r is not true/false — treating it as %s. Check .env for a typo.",
+            name, os.getenv(name), "true" if raw not in _FALSE_VALUES else "false",
+        )
+    return raw not in _FALSE_VALUES
 
 
 @dataclass
@@ -31,14 +51,12 @@ class Settings:
     @classmethod
     def load(cls) -> "Settings":
         load_dotenv()
-        dry_run_raw = os.getenv("DRY_RUN", "true").strip().lower()
-        headless_raw = os.getenv("HEADLESS", "true").strip().lower()
         return cls(
             base_url=os.getenv("MOFID_BASE_URL", ""),
             username=os.getenv("MOFID_USERNAME", ""),
             password=os.getenv("MOFID_PASSWORD", ""),
-            dry_run=dry_run_raw not in ("false", "0", "no"),
-            headless=headless_raw not in ("false", "0", "no"),
+            dry_run=_parse_bool("DRY_RUN", "true"),
+            headless=_parse_bool("HEADLESS", "true"),
             grace_period_seconds=int(os.getenv("GRACE_PERIOD_SECONDS", "120")),
             max_retries=int(os.getenv("MAX_RETRIES", "5")),
             retry_delay_seconds=float(os.getenv("RETRY_DELAY_SECONDS", "2")),
