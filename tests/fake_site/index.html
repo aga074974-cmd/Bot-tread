@@ -188,6 +188,7 @@ function openSymbol(symbol) {
 //   keypad=alien    - a keypad whose markup matches nothing we know
 //   keypad=none     - tapping the box opens nothing at all
 //   qty=sticky      - backspace does not delete
+//   qty=zerofloor   - the box bottoms out at 0 instead of going empty
 //   qty=garbled     - every key enters a 9
 //   buycy=none      - the buy button has no data-cy, only its Persian text
 let keypadTarget = null;
@@ -277,7 +278,11 @@ function pressKey(digit) {
 
 function pressBackspace() {
   rec.keypadPresses.push('back');
-  if (opt('qty') !== 'sticky') raw[keypadTarget] = raw[keypadTarget].slice(0, -1);
+  if (opt('qty') === 'sticky') return renderField(keypadTarget);
+  const left = raw[keypadTarget].slice(0, -1);
+  // zerofloor: the box refuses to be truly empty and shows 0 instead, so the
+  // digits that follow land on top of it — 80 comes out as 080.
+  raw[keypadTarget] = (opt('qty') === 'zerofloor' && left === '') ? '0' : left;
   renderField(keypadTarget);
 }
 

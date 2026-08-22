@@ -444,6 +444,13 @@ class MofidPlaywrightClient(BrokerClient):
             "nothing was clicked blindly"
         )
 
+    @staticmethod
+    def _is_empty(value: str) -> bool:
+        """Empty, or the zero a number box falls back to when it is: both mean
+        nothing of the pre-filled amount is left to be carried into the order."""
+        digits = _digits(value)
+        return digits == "" or int(digits) == 0
+
     async def _clear_number(self, field: Locator, keypad: Locator, what: str) -> None:
         """The box opens pre-filled from the account's buying power, so it holds
         an arbitrary number. Backspace it away key by key — there is no other way
@@ -453,7 +460,8 @@ class MofidPlaywrightClient(BrokerClient):
             hint=f" — see {KEYPAD_HTML_NAME} in this run's folder",
         )
         for _ in range(MAX_CLEAR_PRESSES):
-            if not _digits(await field.input_value()):
+            if self._is_empty(await field.input_value()):
+                log.info("%s box cleared before entering the order's own number", what)
                 return
             await backspace.click()
 
@@ -464,11 +472,11 @@ class MofidPlaywrightClient(BrokerClient):
             "amount we did not choose"
         )
 
-    async def _set_number(self, selector: str, value: int, what: str) -> None:
-        """Put one number into one of the order form's readonly boxes, and be
-        sure it landed: both mistakes possible here — a leftover digit, or a key
-        that entered something else — would send a live order for the wrong
-        amount."""
+    async def _enter_number(self, selector: str, value: int, what: str) -> None:
+        """Put one number into one of the order form's readonly boxes: open the
+        app's keypad, clear whatever the box came up with, and press the digits.
+        Photographed the moment the last digit lands — checking it comes after,
+        so nothing sits between the number arriving and the picture of it."""
         assert self._page is not None
         field = await self._first_match(self._page, (selector,), f"{what} box")
 
@@ -483,13 +491,20 @@ class MofidPlaywrightClient(BrokerClient):
 
         await self._screenshot(f"{what}_filled")
 
-        entered = _digits(await field.input_value())
-        if entered != str(value):
+    async def _check_number(self, selector: str, value: int, what: str) -> None:
+        """Read the box back and refuse to send unless it holds exactly the
+        number asked for. Compared as a number, not as text: a box that fell
+        back to 0 before the digits reads 080 for 80, which is the same amount
+        and no reason to abandon a good order."""
+        assert self._page is not None
+        entered = _digits(await self._page.locator(selector).first.input_value())
+        if not entered or int(entered) != value:
             await self._capture_failure(f"{what}_wrong")
             raise BrokerError(
                 f"the {what} box reads {entered or 'nothing'} after entering {value} — "
                 "not sending an order for the wrong amount"
             )
+        log.info("%s box confirmed at %s", what, value)
 
     async def _do_place_order(self, order: Order) -> str:
         assert self._page is not None
@@ -507,12 +522,19 @@ class MofidPlaywrightClient(BrokerClient):
         await self._screenshot("ticket_opened")
         await self._check_ticket_symbol(order.symbol)
 
-        await self._set_number(QUANTITY_INPUT, order.quantity, "quantity")
+        await self._enter_number(QUANTITY_INPUT, order.quantity, "quantity")
         if order.order_type == OrderType.LIMIT:
             # Market orders leave the price box on its pre-filled last-trade
             # price; only override it for an explicit limit price.
-            await self._set_number(PRICE_INPUT, order.price, "price")
+            await self._enter_number(PRICE_INPUT, order.price, "price")
         await self._screenshot("form_filled")
+
+        # Read back after the picture rather than between the boxes, so nothing
+        # delays the shot of the filled form — and still before anything is
+        # sent, which is the only place the check has to be.
+        await self._check_number(QUANTITY_INPUT, order.quantity, "quantity")
+        if order.order_type == OrderType.LIMIT:
+            await self._check_number(PRICE_INPUT, order.price, "price")
 
         if self.dry_run:
             log.info(

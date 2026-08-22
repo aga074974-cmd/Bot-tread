@@ -362,6 +362,32 @@ async def test_the_open_keypad_is_kept_on_record(make_client, tmp_path):
     assert has_shot(tmp_path / "shots", "quantity_keypad")
 
 
+async def test_a_box_that_bottoms_out_at_zero_counts_as_cleared(make_client):
+    """Number boxes commonly refuse to be truly empty and show 0 instead. That
+    is cleared — nothing of the pre-filled amount is left — and the digits that
+    land on top of it (080 for 80) are the same number, not a mismatch. Reading
+    either of those as a failure would abandon a perfectly good order."""
+    client = make_client(dry_run=False, qty="zerofloor")
+    order = an_order(quantity=80)
+    await client.login()
+
+    assert await client.place_order(order) == f"submitted-{order.id}"
+    assert int((await record(client))["quantity"]) == 80
+
+
+async def test_the_form_is_photographed_before_the_numbers_are_checked(make_client, tmp_path):
+    """The picture is of the moment the numbers landed, so it exists even when
+    the check that follows refuses to send the order."""
+    client = make_client(dry_run=False, qty="garbled")
+    await client.login()
+
+    with pytest.raises(BrokerError, match="not sending an order for the wrong amount"):
+        await client.place_order(an_order(quantity=80))
+
+    assert has_shot(tmp_path / "shots", "form_filled")
+    assert (await record(client))["submitClicked"] is False
+
+
 async def test_a_box_that_will_not_empty_stops_the_order(make_client, tmp_path):
     client = make_client(dry_run=False, qty="sticky")
     await client.login()
