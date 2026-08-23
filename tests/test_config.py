@@ -18,6 +18,7 @@ def _isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "DRY_RUN", "HEADLESS", "MOFID_USERNAME", "MOFID_PASSWORD",
         "GRACE_PERIOD_SECONDS", "MAX_RETRIES", "RETRY_DELAY_SECONDS",
         "RETRY_DEADLINE_SECONDS", "STORAGE_STATE_PATH", "SCREENSHOT_RETENTION_DAYS",
+        "ORDER_HISTORY_RETENTION_DAYS",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr("bot.config.load_dotenv", lambda *a, **k: None)

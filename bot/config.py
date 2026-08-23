@@ -47,6 +47,7 @@ class Settings:
     retry_deadline_seconds: int
     storage_state_path: str
     screenshot_retention_days: int
+    order_history_retention_days: int
 
     @classmethod
     def load(cls) -> "Settings":
@@ -63,6 +64,7 @@ class Settings:
             retry_deadline_seconds=int(os.getenv("RETRY_DEADLINE_SECONDS", "90")),
             storage_state_path=os.getenv("STORAGE_STATE_PATH", "auth_state.json"),
             screenshot_retention_days=int(os.getenv("SCREENSHOT_RETENTION_DAYS", "3")),
+            order_history_retention_days=int(os.getenv("ORDER_HISTORY_RETENTION_DAYS", "30")),
         )
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from bot.config import TEHRAN_TZ
@@ -108,6 +108,26 @@ class OrderStore:
 
     async def cancel(self, order_id: str) -> bool:
         return await asyncio.to_thread(self._cancel, order_id)
+
+    def _purge_old(self, retention_days: int) -> int:
+        conn = self._connect()
+        # scheduled_at is stored with whatever UTC offset TEHRAN_TZ carried at
+        # insert time; comparing the parsed instants (not the raw strings)
+        # keeps this correct even if that offset were ever to change.
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        rows = conn.execute("SELECT id, scheduled_at FROM orders").fetchall()
+        stale_ids = [r["id"] for r in rows if datetime.fromisoformat(r["scheduled_at"]) < cutoff]
+        if stale_ids:
+            conn.executemany("DELETE FROM orders WHERE id = ?", [(i,) for i in stale_ids])
+            conn.commit()
+        conn.close()
+        return len(stale_ids)
+
+    async def purge_old(self, retention_days: int) -> int:
+        """Drop every order — pending included — whose scheduled_at is more
+        than retention_days in the past. A pending order this old is already
+        long past any grace period; keeping it around serves no one."""
+        return await asyncio.to_thread(self._purge_old, retention_days)
 
 
 def row_to_order(row: sqlite3.Row) -> Order:

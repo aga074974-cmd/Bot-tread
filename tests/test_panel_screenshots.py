@@ -1,5 +1,7 @@
-"""Tests for the panel's debug-screenshot page, including the page dumps a
-failed run leaves next to its screenshots."""
+"""Tests for the panel's screenshot/page-dump file route (/screenshots/<run>/
+<name>), which still serves every order's gallery even though the separate
+/screenshots listing page it originally backed is gone — see
+test_panel_gallery.py for the gallery itself."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,24 +29,11 @@ def client(runs_dir: Path, panel_client: TestClient) -> TestClient:
     return panel_client
 
 
-def test_page_dump_is_listed_with_view_and_download_links(client: TestClient):
-    body = client.get("/screenshots").text
-
-    assert f"/screenshots/{RUN}/page.html" in body
-    assert f"/screenshots/{RUN}/page.html?download=1" in body
-    assert "نمایش" in body and "دانلود" in body
-
-
-def test_a_run_with_only_a_dump_is_still_listed(client: TestClient, runs_dir: Path):
-    """A run can fail before its first screenshot lands; the dump is all there
-    is, and it still has to show up."""
-    early = runs_dir / "20260820-090000_وبملت_ff00ff00"
-    early.mkdir()
-    (early / "page.html").write_text(DUMP, encoding="utf-8")
-
-    body = client.get("/screenshots").text
-
-    assert f"/screenshots/{early.name}/page.html" in body
+def test_the_old_listing_page_is_gone(client: TestClient):
+    """/screenshots (no run/name) used to list every run; each order's own
+    gallery replaced it. The file route below it, /screenshots/<run>/<name>,
+    is a different route and stays."""
+    assert client.get("/screenshots").status_code == 404
 
 
 def test_dump_is_served_as_text_never_as_html(client: TestClient):
@@ -79,17 +68,20 @@ def test_screenshots_are_still_served_as_images(client: TestClient):
     ["secret.txt", "..%2F..%2Fpanel.db", "../../panel.db"],
 )
 def test_files_outside_the_listing_are_refused(client: TestClient, name: str):
+    """Only run/name pairs that actually appear in the directory listing are
+    served, so a crafted path can never escape SCREENSHOT_DIR. A refusal now
+    lands on the dashboard rather than the removed listing page."""
     response = client.get(f"/screenshots/{RUN}/{name}", follow_redirects=False)
 
     assert response.status_code in (303, 307, 404)
+    if response.status_code == 303:
+        assert response.headers["location"] == "/"
     assert "page.html" not in response.text
 
 
-def test_dumps_need_a_login(runs_dir: Path, panel_main):
+def test_a_file_route_needs_a_login(runs_dir: Path, panel_main):
     anonymous = TestClient(panel_main.app)
 
-    listing = anonymous.get("/screenshots", follow_redirects=False)
-    dump = anonymous.get(f"/screenshots/{RUN}/page.html", follow_redirects=False)
+    response = anonymous.get(f"/screenshots/{RUN}/page.html", follow_redirects=False)
 
-    assert listing.status_code == 303 and listing.headers["location"] == "/login"
-    assert dump.status_code == 303 and dump.headers["location"] == "/login"
+    assert response.status_code == 303 and response.headers["location"] == "/login"

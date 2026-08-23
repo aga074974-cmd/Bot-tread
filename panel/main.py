@@ -91,6 +91,19 @@ async def _purge_screenshots_periodically() -> None:
         await asyncio.sleep(12 * 3600)
 
 
+async def _purge_order_history_periodically() -> None:
+    """Same idea, for panel.db: orders older than the retention window are
+    dropped so the table (and /history) don't grow forever."""
+    while True:
+        removed = await store.purge_old(settings.order_history_retention_days)
+        if removed:
+            log.info(
+                "removed %d order(s) older than %d days",
+                removed, settings.order_history_retention_days,
+            )
+        await asyncio.sleep(12 * 3600)
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     if settings.dry_run:
@@ -98,12 +111,16 @@ async def on_startup() -> None:
     for order in await store.pending():
         schedule(order)
     asyncio.create_task(_purge_screenshots_periodically())
+    asyncio.create_task(_purge_order_history_periodically())
     log.info("panel started, %d pending order(s) rescheduled", len(running_tasks))
 
 
 def _order_rows(rows) -> list[dict]:
     """One dict per order, ready to render: a Jalali date and a time on their
-    own lines, and the error as the Persian sentence the panel shows."""
+    own lines, the error as the Persian sentence the panel shows, and — when
+    that order ran far enough to leave one — its screenshot gallery."""
+    runs_by_order_id = {run["name"].rsplit("_", 1)[-1]: run for run in _screenshot_runs()}
+
     orders = []
     for r in rows:
         scheduled_at = r["scheduled_at"]
@@ -112,6 +129,7 @@ def _order_rows(rows) -> list[dict]:
             date_fa, time_fa = to_jalali_str(local), local.strftime("%H:%M")
         except ValueError:
             date_fa, time_fa = scheduled_at, ""
+        run = runs_by_order_id.get(r["id"])
         orders.append(
             {
                 "id": r["id"],
@@ -123,9 +141,22 @@ def _order_rows(rows) -> list[dict]:
                 "status": r["status"],
                 "status_fa": STATUS_FA.get(r["status"], r["status"]),
                 "error_fa": to_persian(r["error"]),
+                "gallery": {"run": run["name"], "shots": run["shots"], "pages": run["pages"]} if run else None,
             }
         )
     return orders
+
+
+def _dashboard_split(rows) -> tuple[list, int]:
+    """Pending orders stay on the dashboard no matter how many there are or
+    how old they are — cancelling one is only possible from there. Completed
+    orders (sent/failed/skipped) are capped at DASHBOARD_ORDERS; the rest are
+    what /history is for. The combined list is re-sorted so it still reads as
+    one chronological table rather than two stacked groups."""
+    pending = [r for r in rows if r["status"] == "pending"]
+    completed = [r for r in rows if r["status"] != "pending"]
+    shown = sorted(pending + completed[:DASHBOARD_ORDERS], key=lambda r: r["scheduled_at"], reverse=True)
+    return shown, max(0, len(completed) - DASHBOARD_ORDERS)
 
 
 def require_auth(request: Request) -> bool:
@@ -156,7 +187,9 @@ async def dashboard(request: Request):
     if not require_auth(request):
         return RedirectResponse("/login", status_code=303)
 
-    orders = _order_rows(await store.list_all())
+    rows = await store.list_all()
+    shown_rows, hidden_count = _dashboard_split(rows)
+    orders = _order_rows(shown_rows)
 
     flash = request.session.pop("flash", None)
     flash_error = request.session.pop("flash_error", False)
@@ -167,8 +200,8 @@ async def dashboard(request: Request):
         request,
         "dashboard.html",
         {
-            "orders": orders[:DASHBOARD_ORDERS],
-            "hidden_count": max(0, len(orders) - DASHBOARD_ORDERS),
+            "orders": orders,
+            "hidden_count": hidden_count,
             "flash": flash,
             "flash_error": flash_error,
             "months": list(enumerate(PERSIAN_MONTHS, start=1)),
@@ -241,7 +274,8 @@ async def history(request: Request):
 
 def _screenshot_runs() -> list[dict]:
     """One entry per order run (newest first), with its shots and — when the
-    run failed — the page markup the connector dumped alongside them."""
+    run failed — the page markup the connector dumped alongside them. Backs
+    both each order's inline gallery and the path check below."""
     if not SCREENSHOT_DIR.is_dir():
         return []
     runs = []
@@ -262,17 +296,6 @@ def _is_known_file(run: str, name: str) -> bool:
     )
 
 
-@app.get("/screenshots", response_class=HTMLResponse)
-async def screenshots(request: Request):
-    if not require_auth(request):
-        return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(
-        request,
-        "screenshots.html",
-        {"runs": _screenshot_runs(), "retention_days": settings.screenshot_retention_days},
-    )
-
-
 @app.get("/screenshots/{run}/{name}")
 async def screenshot_file(request: Request, run: str, name: str, download: int = 0):
     if not require_auth(request):
@@ -280,7 +303,7 @@ async def screenshot_file(request: Request, run: str, name: str, download: int =
     # Only serve run/name pairs that actually appear in the directory listing,
     # so a crafted path can never escape SCREENSHOT_DIR.
     if not _is_known_file(run, name):
-        return RedirectResponse("/screenshots", status_code=303)
+        return RedirectResponse("/", status_code=303)
 
     path = SCREENSHOT_DIR / run / name
     if path.suffix == ".png":

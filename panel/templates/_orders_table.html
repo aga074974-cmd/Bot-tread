@@ -27,6 +27,10 @@
         {% else %}
         <span class="badge {{ o.status }}">{{ o.status_fa }}</span>
         {% endif %}
+        {% if o.gallery %}
+        <button type="button" class="gallery-btn" data-gallery='{{ o.gallery | tojson }}'
+                onclick="openGallery(this)" title="عکس‌های این سفارش">▶</button>
+        {% endif %}
       </td>
       <td>
         {% if o.status == 'pending' %}
@@ -41,6 +45,21 @@
 </div>
 
 <div id="toast" hidden></div>
+
+{# One shared modal for every row's gallery button: a thumbnail grid first,
+   then either a fullscreen image or (for an html dump) its own tab — the
+   files themselves are still served, and path-checked, by the existing
+   /screenshots/<run>/<name> route; nothing here bypasses that. #}
+<div id="gallery-modal" hidden>
+  <div class="gallery-bar">
+    <button type="button" id="gallery-back" onclick="showGalleryGrid()" hidden>→</button>
+    <span class="title" id="gallery-title"></span>
+    <button type="button" onclick="closeGallery()">✕</button>
+  </div>
+  <div class="gallery-grid" id="gallery-grid"></div>
+  <div class="gallery-full" id="gallery-full" hidden><img alt=""></div>
+</div>
+
 <script>
   let toastTimer;
   function showError(button) {
@@ -49,6 +68,75 @@
     toast.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { toast.hidden = true; }, 3000);
+  }
+
+  let currentGallery = null;
+
+  function openGallery(button) {
+    currentGallery = JSON.parse(button.dataset.gallery);
+    showGalleryGrid();
+    document.getElementById('gallery-modal').hidden = false;
+  }
+
+  function closeGallery() {
+    document.getElementById('gallery-modal').hidden = true;
+    currentGallery = null;
+  }
+
+  function fileUrl(name) {
+    return `/screenshots/${encodeURIComponent(currentGallery.run)}/${encodeURIComponent(name)}`;
+  }
+
+  function showGalleryGrid() {
+    document.getElementById('gallery-full').hidden = true;
+    document.getElementById('gallery-back').hidden = true;
+    const title = document.getElementById('gallery-title');
+    title.removeAttribute('dir');  // back to the page's own RTL for this Persian summary
+    title.textContent =
+      `${currentGallery.shots.length} عکس` + (currentGallery.pages.length ? ` · ${currentGallery.pages.length} فایل` : '');
+
+    const grid = document.getElementById('gallery-grid');
+    grid.hidden = false;
+    grid.innerHTML = '';
+    for (const shot of currentGallery.shots) {
+      const img = document.createElement('img');
+      img.src = fileUrl(shot);
+      // A latin, digit-led filename ("01_login_page.png") read as alt text
+      // inside an RTL page reorders itself ("login_page.png_01") unless it is
+      // pinned ltr — the same fix the old screenshots page needed.
+      img.dir = 'ltr';
+      img.alt = shot;
+      img.loading = 'lazy';
+      img.onclick = () => showGalleryImage(shot);
+      grid.appendChild(img);
+    }
+    // Page dumps (page.html / keypad.html) are markup from the broker's own
+    // site, served as plain text on purpose — opened in their own tab rather
+    // than rendered inside this page. See the file route for why.
+    for (const page of currentGallery.pages) {
+      const a = document.createElement('a');
+      a.className = 'html-item';
+      a.href = fileUrl(page);
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.dir = 'ltr';
+      a.title = page;
+      a.textContent = '📄';
+      grid.appendChild(a);
+    }
+  }
+
+  function showGalleryImage(name) {
+    document.getElementById('gallery-grid').hidden = true;
+    document.getElementById('gallery-back').hidden = false;
+    const title = document.getElementById('gallery-title');
+    title.setAttribute('dir', 'ltr');  // a filename, not Persian text
+    title.textContent = name;
+    const full = document.getElementById('gallery-full');
+    full.hidden = false;
+    full.querySelector('img').src = fileUrl(name);
+    full.querySelector('img').dir = 'ltr';
+    full.querySelector('img').alt = name;
   }
 </script>
 {% else %}
