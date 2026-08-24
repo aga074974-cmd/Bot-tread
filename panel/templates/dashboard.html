@@ -11,6 +11,17 @@
   <h1>پنل ربات<span class="brand">(کارگزاری مفید)</span></h1>
 </div>
 
+{# Purely decorative — a small CSS-only loop, no image/JS dependency — so it
+   is hidden from screen readers rather than read aloud as stray emoji. #}
+<div class="robot-banner" aria-hidden="true">
+  <div class="robot-scene">
+    <span class="coin coin-1">💵</span>
+    <span class="coin coin-2">💰</span>
+    <span class="coin coin-3">💵</span>
+    <span class="robot">🤖</span>
+  </div>
+</div>
+
 {% if flash %}<div class="flash {{ 'error' if flash_error else '' }}">{{ flash }}</div>{% endif %}
 
 <div class="card">

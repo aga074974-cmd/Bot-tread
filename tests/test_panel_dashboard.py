@@ -171,6 +171,21 @@ async def test_the_title_is_two_lines_the_brand_in_yellow(panel_client: TestClie
     assert '<h1>پنل ربات<span class="brand">(کارگزاری مفید)</span></h1>' in body
 
 
+async def test_the_robot_banner_sits_between_the_header_and_the_order_form(
+    panel_client: TestClient
+):
+    """Decorative only: CSS keyframes, no image or script dependency, and
+    hidden from screen readers so it is not read aloud as stray emoji."""
+    body = panel_client.get("/").text
+
+    assert 'class="robot-banner" aria-hidden="true"' in body
+    assert "🤖" in body
+    assert "@keyframes robot-count-bob" in body
+    assert "@keyframes coin-pop" in body
+    assert "robot-count-bob 1.4s ease-in-out infinite" in body  # actually loops, not a one-shot
+    assert body.index('class="top"') < body.index('class="robot-banner"') < body.index("سفارش جدید")
+
+
 # --------------------------------------------------------------------------
 # the date, the errors, the header
 # --------------------------------------------------------------------------
