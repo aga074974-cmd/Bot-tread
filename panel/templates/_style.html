@@ -65,31 +65,41 @@
      the browser's default [hidden]{display:none} at equal specificity — so
      toggling the hidden attribute alone would not actually hide either one. */
   .gallery-grid[hidden], .gallery-full[hidden] { display: none; }
-  /* A small decorative loop above the order form on the dashboard: a robot
-     nodding along while it "counts" money. CSS keyframes only — no image
-     file and no script, so there is nothing here to load or fail. */
-  .robot-banner { display: flex; justify-content: center; align-items: flex-end;
-                   height: 70px; margin-bottom: 0.6rem; overflow: hidden; }
-  .robot-scene { position: relative; width: 130px; height: 100%; }
-  .robot-scene .robot { position: absolute; bottom: 4px; inset-inline-start: 50%;
-                         margin-inline-start: -22px; font-size: 2.4rem; line-height: 1;
-                         transform-origin: 70% 100%; animation: robot-count-bob 1.4s ease-in-out infinite; }
-  .robot-scene .coin { position: absolute; bottom: 34px; font-size: 1.15rem; opacity: 0;
-                        animation: coin-pop 1.8s ease-in infinite; }
-  .robot-scene .coin-1 { inset-inline-start: 66px; animation-delay: 0s; }
-  .robot-scene .coin-2 { inset-inline-start: 78px; animation-delay: 0.6s; }
-  .robot-scene .coin-3 { inset-inline-start: 54px; animation-delay: 1.2s; }
-  @keyframes robot-count-bob {
-    0%, 100% { transform: rotate(-3deg) translateY(0); }
-    50% { transform: rotate(3deg) translateY(-2px); }
+  /* A small decorative badge next to the header title: a robot counting a
+     stack of banknotes. Pure inline SVG/CSS — no image file and no script,
+     so there is nothing here to load or fail. Sized generously and left
+     unclipped (overflow: visible throughout) so nothing gets cut off. */
+  .robot-badge { flex-shrink: 0; width: 96px; height: 68px; overflow: visible; }
+  .robot-badge svg { width: 100%; height: 100%; overflow: visible; display: block; }
+  .robot-badge .bot-group { animation: bot-bob 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+  .robot-badge .eye { transform-box: fill-box; transform-origin: 50% 50%; animation: eye-blink 4s ease-in-out infinite; }
+  .robot-badge .antenna-tip { transform-box: fill-box; transform-origin: 50% 50%; animation: tip-pulse 1.8s ease-in-out infinite; }
+  .robot-badge .bill-flip { transform-box: fill-box; transform-origin: 100% 50%; animation: bill-flip 1s ease-in-out infinite; }
+  .robot-badge .thumb { transform-box: fill-box; transform-origin: 50% 100%; animation: thumb-riffle 1s ease-in-out infinite; }
+  @keyframes bot-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-1.5px); }
   }
-  @keyframes coin-pop {
-    0%   { opacity: 0; transform: translateY(0) scale(0.7); }
-    15%  { opacity: 1; transform: translateY(-6px) scale(1); }
-    70%  { opacity: 1; transform: translateY(-24px) scale(1); }
-    100% { opacity: 0; transform: translateY(-34px) scale(0.85); }
+  @keyframes eye-blink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    95% { transform: scaleY(0.15); }
+  }
+  @keyframes tip-pulse {
+    0%, 100% { opacity: 0.7; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.25); }
+  }
+  @keyframes bill-flip {
+    0%, 40% { transform: scaleX(1); }
+    55% { transform: scaleX(0.1); }
+    70%, 100% { transform: scaleX(1); }
+  }
+  @keyframes thumb-riffle {
+    0%, 40% { transform: translateY(0) rotate(0deg); }
+    55% { transform: translateY(-4px) rotate(-12deg); }
+    70%, 100% { transform: translateY(0) rotate(0deg); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .robot-scene .robot, .robot-scene .coin { animation: none; opacity: 1; }
+    .robot-badge .bot-group, .robot-badge .eye, .robot-badge .antenna-tip,
+    .robot-badge .bill-flip, .robot-badge .thumb { animation: none; }
   }
 </style>

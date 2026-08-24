@@ -171,19 +171,35 @@ async def test_the_title_is_two_lines_the_brand_in_yellow(panel_client: TestClie
     assert '<h1>پنل ربات<span class="brand">(کارگزاری مفید)</span></h1>' in body
 
 
-async def test_the_robot_banner_sits_between_the_header_and_the_order_form(
-    panel_client: TestClient
-):
-    """Decorative only: CSS keyframes, no image or script dependency, and
-    hidden from screen readers so it is not read aloud as stray emoji."""
+async def test_the_robot_badge_sits_inline_with_the_header_title(panel_client: TestClient):
+    """Decorative only: inline SVG/CSS, no image or script dependency, and
+    hidden from screen readers so it is not read aloud as stray shapes. It
+    lives inside .top, alongside the <h1>, not as a block below it."""
     body = panel_client.get("/").text
 
-    assert 'class="robot-banner" aria-hidden="true"' in body
-    assert "🤖" in body
-    assert "@keyframes robot-count-bob" in body
-    assert "@keyframes coin-pop" in body
-    assert "robot-count-bob 1.4s ease-in-out infinite" in body  # actually loops, not a one-shot
-    assert body.index('class="top"') < body.index('class="robot-banner"') < body.index("سفارش جدید")
+    assert 'class="robot-badge" aria-hidden="true"' in body
+    assert "<svg viewBox=" in body
+    assert "@keyframes bill-flip" in body
+    assert "@keyframes thumb-riffle" in body
+
+    top_start = body.index('class="top"')
+    top_end = body.index("</div>", top_start)
+    h1_pos = body.index("<h1>پنل ربات", top_start)
+    badge_pos = body.index('class="robot-badge"', top_start)
+
+    # same header row: badge is a sibling of <h1>, nested inside .top, and
+    # the whole thing closes before the order form starts.
+    assert top_start < h1_pos < badge_pos < top_end < body.index("سفارش جدید")
+
+
+async def test_the_robot_badge_is_not_clipped(panel_client: TestClient):
+    """The badge's own box and its inner svg must both allow overflow, or
+    parts of the SVG art (which extends slightly past its nominal box during
+    the counting animation) would get cut off."""
+    body = panel_client.get("/").text
+
+    assert ".robot-badge { flex-shrink: 0; width: 96px; height: 68px; overflow: visible; }" in body
+    assert "overflow: visible; display: block;" in body
 
 
 # --------------------------------------------------------------------------
