@@ -8,7 +8,14 @@
 </head>
 <body>
 <div class="top">
-  <h1>پنل ربات<span class="brand">(کارگزاری مفید)</span></h1>
+  <div class="title-row">
+    <h1>پنل ربات<span class="brand">(کارگزاری مفید)</span></h1>
+    <button type="button" id="session-light"
+            class="session-light {{ 'session-light-valid' if session_valid else 'session-light-invalid' }}"
+            onclick="checkSession()"
+            aria-label="وضعیت نشست ورود؛ برای بررسی دوباره ضربه بزنید"
+            title="{{ 'نشست فعال است' if session_valid else 'نشست نامعتبر است یا هنوز بررسی نشده' }}"></button>
+  </div>
   {# Purely decorative — pure SVG/CSS, no image or script dependency — so it
      is hidden from screen readers rather than read aloud as stray shapes. #}
   <div class="robot-badge" aria-hidden="true">
@@ -42,6 +49,56 @@
 </div>
 
 {% if flash %}<div class="flash {{ 'error' if flash_error else '' }}">{{ flash }}</div>{% endif %}
+
+<div id="manual-login" class="card"{{ '' if manual_login_required else ' hidden' }}>
+  <h2>ورود دستی</h2>
+  <p class="empty">چند تلاش خودکار برای ورود ناموفق بود. نام کاربری و رمز عبور را وارد کنید.</p>
+  <form method="post" action="/session/manual-login">
+    <label>نام کاربری</label>
+    <input type="text" name="username" required autocomplete="username">
+    <label>رمز عبور</label>
+    <input type="password" name="password" required autocomplete="off">
+    <label class="checkbox-row">
+      <input type="checkbox" name="save" value="1">
+      ذخیره برای دفعات بعد
+    </label>
+    <button class="submit" type="submit">ورود دستی</button>
+  </form>
+</div>
+
+<div id="session-toast" hidden></div>
+
+<script>
+  let sessionToastTimer;
+  function showSessionToast(text, isError) {
+    const toast = document.getElementById('session-toast');
+    toast.textContent = text;
+    toast.classList.toggle('error', !!isError);
+    toast.hidden = false;
+    clearTimeout(sessionToastTimer);
+    sessionToastTimer = setTimeout(() => { toast.hidden = true; }, 3000);
+  }
+
+  async function checkSession() {
+    const light = document.getElementById('session-light');
+    light.className = 'session-light session-light-checking';
+    light.title = 'در حال بررسی...';
+    try {
+      const res = await fetch('/session/check', { method: 'POST' });
+      const data = await res.json();
+      light.className = 'session-light ' + (data.valid ? 'session-light-valid' : 'session-light-invalid');
+      light.title = data.valid ? 'نشست فعال است' : 'نشست نامعتبر است';
+      showSessionToast(data.message, !data.valid);
+      if (data.manual_login_required) {
+        document.getElementById('manual-login').hidden = false;
+      }
+    } catch (err) {
+      light.className = 'session-light session-light-invalid';
+      light.title = 'خطا در بررسی وضعیت';
+      showSessionToast('خطا در ارتباط با سرور', true);
+    }
+  }
+</script>
 
 <div class="card">
   <h2>سفارش جدید</h2>

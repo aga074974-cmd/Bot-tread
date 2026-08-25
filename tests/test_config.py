@@ -4,10 +4,12 @@ silently running live orders through a dry-run that never happened."""
 from __future__ import annotations
 
 import logging
+import stat
+from pathlib import Path
 
 import pytest
 
-from bot.config import Settings
+from bot.config import Settings, update_env_values
 
 
 @pytest.fixture(autouse=True)
@@ -74,3 +76,71 @@ def test_a_recognised_value_logs_nothing(monkeypatch: pytest.MonkeyPatch, caplog
         Settings.load()
 
     assert caplog.text == ""
+
+
+# --------------------------------------------------------------------------
+# update_env_values — rewriting .env for the panel's "save credentials" option
+# --------------------------------------------------------------------------
+
+def test_update_env_values_replaces_an_existing_key_in_place(tmp_path: Path):
+    env = tmp_path / ".env"
+    env.write_text("MOFID_USERNAME=old-user\nMOFID_PASSWORD=old-pass\nDRY_RUN=true\n", encoding="utf-8")
+
+    update_env_values(env, {"MOFID_PASSWORD": "new-pass"})
+
+    lines = env.read_text(encoding="utf-8").splitlines()
+    assert lines == ["MOFID_USERNAME=old-user", "MOFID_PASSWORD=new-pass", "DRY_RUN=true"]
+
+
+def test_update_env_values_preserves_comments_and_blank_lines(tmp_path: Path):
+    env = tmp_path / ".env"
+    env.write_text(
+        "# a comment\nMOFID_USERNAME=old-user\n\n# another\nMOFID_PASSWORD=old-pass\n",
+        encoding="utf-8",
+    )
+
+    update_env_values(env, {"MOFID_USERNAME": "new-user"})
+
+    lines = env.read_text(encoding="utf-8").splitlines()
+    assert lines == ["# a comment", "MOFID_USERNAME=new-user", "", "# another", "MOFID_PASSWORD=old-pass"]
+
+
+def test_update_env_values_appends_a_missing_key(tmp_path: Path):
+    env = tmp_path / ".env"
+    env.write_text("DRY_RUN=true\n", encoding="utf-8")
+
+    update_env_values(env, {"MOFID_USERNAME": "u", "MOFID_PASSWORD": "p"})
+
+    text = env.read_text(encoding="utf-8")
+    assert "DRY_RUN=true" in text
+    assert "MOFID_USERNAME=u" in text
+    assert "MOFID_PASSWORD=p" in text
+
+
+def test_update_env_values_creates_the_file_if_it_does_not_exist(tmp_path: Path):
+    env = tmp_path / ".env"
+
+    update_env_values(env, {"MOFID_USERNAME": "u"})
+
+    assert env.read_text(encoding="utf-8") == "MOFID_USERNAME=u\n"
+
+
+def test_update_env_values_leaves_the_file_owner_only(tmp_path: Path):
+    env = tmp_path / ".env"
+    env.write_text("MOFID_USERNAME=old\n", encoding="utf-8")
+
+    update_env_values(env, {"MOFID_USERNAME": "new"})
+
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
+
+
+def test_update_env_values_never_logs_the_values_it_writes(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+):
+    env = tmp_path / ".env"
+    env.write_text("MOFID_PASSWORD=old\n", encoding="utf-8")
+
+    with caplog.at_level(logging.DEBUG):
+        update_env_values(env, {"MOFID_PASSWORD": "super-secret-value"})
+
+    assert "super-secret-value" not in caplog.text

@@ -183,13 +183,89 @@ async def test_the_robot_badge_sits_inline_with_the_header_title(panel_client: T
     assert "@keyframes thumb-riffle" in body
 
     top_start = body.index('class="top"')
-    top_end = body.index("</div>", top_start)
     h1_pos = body.index("<h1>پنل ربات", top_start)
     badge_pos = body.index('class="robot-badge"', top_start)
+    manual_login_pos = body.index('id="manual-login"', top_start)
 
-    # same header row: badge is a sibling of <h1>, nested inside .top, and
-    # the whole thing closes before the order form starts.
-    assert top_start < h1_pos < badge_pos < top_end < body.index("سفارش جدید")
+    # same header row: badge comes after <h1>, both inside .top, and the
+    # whole header is done before the manual-login section and order form.
+    assert top_start < h1_pos < badge_pos < manual_login_pos < body.index("سفارش جدید")
+
+
+# --------------------------------------------------------------------------
+# the login-session status light
+# --------------------------------------------------------------------------
+
+async def test_the_light_reflects_a_session_recorded_as_valid(panel_client: TestClient, panel_session_store):
+    await panel_session_store.record_login_success()
+
+    body = panel_client.get("/").text
+
+    assert 'id="session-light"' in body
+    assert 'class="session-light session-light-valid"' in body
+    # the class name also appears in the page's own CSS, so check the
+    # rendered attribute specifically rather than the bare substring.
+    assert 'class="session-light session-light-invalid"' not in body
+
+
+async def test_the_light_defaults_to_invalid_before_any_check_ever_ran(panel_client: TestClient):
+    body = panel_client.get("/").text
+
+    assert 'session-light session-light-invalid' in body
+
+
+async def test_the_light_turns_invalid_again_after_a_login_failure(
+    panel_client: TestClient, panel_session_store
+):
+    await panel_session_store.record_login_success()
+    await panel_session_store.record_login_failure()
+
+    body = panel_client.get("/").text
+
+    assert 'session-light session-light-invalid' in body
+
+
+async def test_clicking_the_light_is_wired_to_the_check_endpoint(panel_client: TestClient):
+    body = panel_client.get("/").text
+
+    assert 'onclick="checkSession()"' in body
+    assert "fetch('/session/check'" in body
+
+
+# --------------------------------------------------------------------------
+# the manual-login fallback
+# --------------------------------------------------------------------------
+
+HIDDEN_MANUAL_LOGIN = '<div id="manual-login" class="card" hidden>'
+SHOWN_MANUAL_LOGIN = '<div id="manual-login" class="card">'
+
+
+async def test_manual_login_form_stays_hidden_below_the_failure_threshold(
+    panel_client: TestClient, panel_main, panel_session_store
+):
+    for _ in range(panel_main.MANUAL_LOGIN_THRESHOLD - 1):
+        await panel_session_store.record_login_failure()
+
+    body = panel_client.get("/").text
+
+    assert HIDDEN_MANUAL_LOGIN in body
+    assert SHOWN_MANUAL_LOGIN not in body
+
+
+async def test_manual_login_form_appears_once_the_threshold_is_reached(
+    panel_client: TestClient, panel_main, panel_session_store
+):
+    for _ in range(panel_main.MANUAL_LOGIN_THRESHOLD):
+        await panel_session_store.record_login_failure()
+
+    body = panel_client.get("/").text
+
+    assert SHOWN_MANUAL_LOGIN in body
+    assert HIDDEN_MANUAL_LOGIN not in body
+    assert 'name="username"' in body
+    assert 'type="password" name="password"' in body
+    assert 'name="save" value="1"' in body
+    assert 'action="/session/manual-login"' in body
 
 
 async def test_the_robot_badge_is_not_clipped(panel_client: TestClient):

@@ -68,6 +68,34 @@ class Settings:
         )
 
 
+def update_env_values(path: str | Path, values: dict[str, str]) -> None:
+    """Rewrite (or add) KEY=value lines in a .env file, leaving every other
+    line untouched. Used only for credentials a person just typed into the
+    panel's manual-login form and asked to keep — so this never logs what it
+    writes, and the file is left owner-only afterward since it holds a
+    password. Written to a temp file and swapped in with one atomic rename,
+    so a crash mid-write cannot leave a half-written .env behind."""
+    path = Path(path)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    remaining = dict(values)
+    updated_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in remaining:
+                updated_lines.append(f"{key}={remaining.pop(key)}")
+                continue
+        updated_lines.append(line)
+    for key, value in remaining.items():
+        updated_lines.append(f"{key}={value}")
+
+    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+    tmp_path.chmod(0o600)
+    tmp_path.replace(path)
+
+
 def parse_tehran_datetime(value: str) -> datetime:
     naive = datetime.strptime(value, "%Y-%m-%d %H:%M:%S") if len(value) > 16 else datetime.strptime(value, "%Y-%m-%d %H:%M")
     return naive.replace(tzinfo=TEHRAN_TZ)

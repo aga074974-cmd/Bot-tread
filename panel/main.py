@@ -6,13 +6,15 @@ import os
 import secrets
 from datetime import datetime
 
+from dotenv import find_dotenv
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
+from bot.broker.base import BrokerError
 from bot.broker.mofid_playwright import MofidPlaywrightClient
-from bot.config import Settings, TEHRAN_TZ, parse_tehran_datetime
+from bot.config import Settings, TEHRAN_TZ, parse_tehran_datetime, update_env_values
 from bot.logging_setup import setup_logging
 from bot.models import Order, OrderStatus, OrderType, Side
 from bot.scheduler import run_order
@@ -20,6 +22,7 @@ from bot.screenshots import BASE_DIR as SCREENSHOT_DIR, purge_old, run_dir
 from panel.db import OrderStore
 from panel.errors import to_persian
 from panel.jalali import PERSIAN_MONTHS, current_jalali_year, jalali_to_gregorian_str, to_jalali_str, today_jalali_ymd
+from panel.session_state import SessionStateStore
 
 log = logging.getLogger(__name__)
 
@@ -29,11 +32,21 @@ settings = Settings.load()
 PANEL_PASSWORD = os.getenv("PANEL_PASSWORD", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET") or secrets.token_hex(32)
 DB_PATH = os.getenv("PANEL_DB_PATH", "panel.db")
+# The same file Settings.load()'s load_dotenv() actually read, so a manual
+# login that asks to be "saved" updates the .env the running process is
+# using — not just some ".env" in whatever the current directory happens to
+# be at request time.
+ENV_PATH = find_dotenv() or ".env"
+
+# "2 or 3 attempts in a row" per the panel's own spec for this guard; 3 gives
+# the automatic retry a little more room before it bothers a person.
+MANUAL_LOGIN_THRESHOLD = 3
 
 if not PANEL_PASSWORD:
     raise RuntimeError("PANEL_PASSWORD must be set in .env before starting the panel")
 
 store = OrderStore(DB_PATH)
+session_store = SessionStateStore(DB_PATH)
 templates = Jinja2Templates(directory="panel/templates")
 running_tasks: dict[str, asyncio.Task] = {}
 
@@ -52,6 +65,18 @@ STATUS_FA = {
 }
 
 
+async def _report_login_result(success: bool, detail: str) -> None:
+    """Feeds every automatic login attempt's outcome into the shared session
+    state — whether it came from an order actually being placed or from the
+    status light's own re-login — so either path can trip the manual-login
+    fallback below."""
+    if success:
+        await session_store.record_login_success()
+    else:
+        await session_store.record_login_failure()
+        log.warning("automatic login failed: %s", detail)
+
+
 def broker_factory(order: Order) -> MofidPlaywrightClient:
     return MofidPlaywrightClient(
         username=settings.username,
@@ -60,6 +85,7 @@ def broker_factory(order: Order) -> MofidPlaywrightClient:
         headless=settings.headless,
         storage_state_path=settings.storage_state_path,
         screenshot_dir=run_dir(SCREENSHOT_DIR, f"{order.symbol}_{order.id}"),
+        on_login_result=_report_login_result,
     )
 
 
@@ -190,6 +216,7 @@ async def dashboard(request: Request):
     rows = await store.list_all()
     shown_rows, hidden_count = _dashboard_split(rows)
     orders = _order_rows(shown_rows)
+    session_status = await session_store.get()
 
     flash = request.session.pop("flash", None)
     flash_error = request.session.pop("flash_error", False)
@@ -210,8 +237,114 @@ async def dashboard(request: Request):
             "today_month": today_month,
             "today_day": today_day,
             "now_time": now_time,
+            "session_valid": session_status["valid"],
+            "manual_login_required": session_status["consecutive_failures"] >= MANUAL_LOGIN_THRESHOLD,
         },
     )
+
+
+def _session_check_client() -> MofidPlaywrightClient:
+    """A client for a plain status check — always headless regardless of
+    HEADLESS in .env (that setting is for watching an order run locally, not
+    for a background status check on a server with no display), and never
+    wired to the failure counter: check_session() itself never attempts a
+    login, so there is nothing here for that counter to count."""
+    return MofidPlaywrightClient(
+        username=settings.username,
+        password=settings.password,
+        dry_run=True,
+        headless=True,
+        storage_state_path=settings.storage_state_path,
+    )
+
+
+@app.post("/session/check")
+async def session_check(request: Request):
+    if not require_auth(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    client = _session_check_client()
+    try:
+        valid = await client.check_session()
+    finally:
+        await client.close()
+
+    if valid:
+        await session_store.set_valid(True)
+        return JSONResponse({"valid": True, "message": "نشست فعال است", "manual_login_required": False})
+
+    # Invalid — automatically try to sign back in with the saved credentials
+    # before bothering anyone. Both outcomes go through the same reporting
+    # path as an order's own login (_report_login_result), so this attempt
+    # counts toward the same streak.
+    relogin_client = MofidPlaywrightClient(
+        username=settings.username,
+        password=settings.password,
+        dry_run=True,
+        headless=True,
+        storage_state_path=settings.storage_state_path,
+        on_login_result=_report_login_result,
+    )
+    try:
+        await relogin_client.login()
+    except BrokerError as exc:
+        status = await session_store.get()
+        return JSONResponse({
+            "valid": False,
+            "message": f"ورود ناموفق: {to_persian(str(exc))}",
+            "manual_login_required": status["consecutive_failures"] >= MANUAL_LOGIN_THRESHOLD,
+        })
+    else:
+        status = await session_store.get()
+        return JSONResponse({
+            "valid": True,
+            "message": "ورود مجدد موفق بود",
+            "manual_login_required": status["consecutive_failures"] >= MANUAL_LOGIN_THRESHOLD,
+        })
+    finally:
+        await relogin_client.close()
+
+
+@app.post("/session/manual-login")
+async def session_manual_login(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    save: str | None = Form(None),
+):
+    if not require_auth(request):
+        return RedirectResponse("/login", status_code=303)
+
+    client = MofidPlaywrightClient(
+        username=username,
+        password=password,
+        dry_run=True,
+        headless=True,
+        storage_state_path=settings.storage_state_path,
+        on_login_result=_report_login_result,
+    )
+    try:
+        await client.login()
+    except BrokerError as exc:
+        request.session["flash"] = f"ورود دستی ناموفق: {to_persian(str(exc))}"
+        request.session["flash_error"] = True
+        return RedirectResponse("/", status_code=303)
+    finally:
+        await client.close()
+
+    # The typed credentials are only ever used for this one attempt unless
+    # asked to be kept: only then do they replace what future automatic
+    # logins (a session run, or the next click on the light) will use.
+    if save == "1":
+        settings.username = username
+        settings.password = password
+        await asyncio.to_thread(
+            update_env_values, ENV_PATH, {"MOFID_USERNAME": username, "MOFID_PASSWORD": password}
+        )
+        request.session["flash"] = "ورود دستی موفق بود و برای دفعات بعد ذخیره شد."
+    else:
+        request.session["flash"] = "ورود دستی موفق بود."
+    return RedirectResponse("/", status_code=303)
 
 
 @app.post("/orders")

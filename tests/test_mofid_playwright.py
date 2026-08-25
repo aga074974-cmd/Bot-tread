@@ -225,6 +225,158 @@ async def test_browser_pretends_to_be_a_phone(make_client):
 
 
 # --------------------------------------------------------------------------
+# check_session
+# --------------------------------------------------------------------------
+
+async def test_check_session_reads_a_restored_session_as_valid(make_client, tmp_path):
+    state = tmp_path / "auth_state.json"
+    first = make_client(storage_state_path=state)
+    await first.login()
+    await first.close()
+
+    checker = make_client(storage_state_path=state)
+    valid = await checker.check_session()
+
+    assert valid is True
+    assert (await record(checker))["loginSubmittedWith"] is None  # never typed anything
+
+
+async def test_check_session_reads_a_missing_session_as_invalid(make_client, tmp_path):
+    """No auth_state.json at all — the fake site's login form is what's on
+    screen, same as a genuinely expired session would show."""
+    client = make_client(storage_state_path=tmp_path / "does_not_exist.json")
+
+    valid = await client.check_session()
+
+    assert valid is False
+
+
+async def test_check_session_never_attempts_a_credential_login(make_client, tmp_path):
+    """The whole point of check_session() over login(): even with the login
+    form on screen, it must only look — never type, never click submit."""
+    client = make_client(storage_state_path=tmp_path / "does_not_exist.json")
+
+    await client.check_session()
+
+    seen = await record(client)
+    assert seen["loginSubmittedWith"] is None
+    assert seen["typedKeys"] == {"username": 0, "password": 0}
+
+
+async def test_check_session_reports_invalid_rather_than_raising_when_stuck(
+    make_client, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(mofid_playwright, "PAGE_READY_TIMEOUT_MS", 1_500)
+    client = make_client(stuck=1)
+
+    valid = await client.check_session()  # would raise BrokerError from login()
+
+    assert valid is False
+
+
+# --------------------------------------------------------------------------
+# on_login_result
+# --------------------------------------------------------------------------
+
+async def test_on_login_result_reports_success_after_a_fresh_credential_login(make_client):
+    calls = []
+
+    async def record_call(success: bool, detail: str) -> None:
+        calls.append((success, detail))
+
+    client = make_client(on_login_result=record_call)
+
+    await client.login()
+
+    assert calls == [(True, "")]
+
+
+async def test_on_login_result_reports_success_after_a_restored_session(make_client, tmp_path):
+    state = tmp_path / "auth_state.json"
+    first = make_client(storage_state_path=state)
+    await first.login()
+    await first.close()
+
+    calls = []
+
+    async def record_call(success: bool, detail: str) -> None:
+        calls.append((success, detail))
+
+    second = make_client(storage_state_path=state, on_login_result=record_call)
+    await second.login()
+
+    assert calls == [(True, "")]
+
+
+async def test_on_login_result_reports_failure_and_login_still_raises(make_client, monkeypatch):
+    monkeypatch.setattr(mofid_playwright, "PAGE_READY_TIMEOUT_MS", 1_500)
+    calls = []
+
+    async def record_call(success: bool, detail: str) -> None:
+        calls.append((success, detail))
+
+    client = make_client(badlogin=1, on_login_result=record_call)
+
+    with pytest.raises(BrokerError):
+        await client.login()
+
+    assert len(calls) == 1
+    success, detail = calls[0]
+    assert success is False
+    assert "نام کاربری یا کلمه عبور اشتباه است" in detail
+
+
+async def test_a_broken_callback_does_not_swallow_the_real_result(
+    make_client, monkeypatch, caplog, tmp_path
+):
+    """A bug in whatever is listening must never change what login() itself
+    raises or returns — it is a side channel, not part of the outcome."""
+    monkeypatch.setattr(mofid_playwright, "PAGE_READY_TIMEOUT_MS", 1_500)
+
+    async def broken(success: bool, detail: str) -> None:
+        raise ValueError("listener bug")
+
+    # Two separate session files: sharing the default one would let the
+    # second client silently restore the first's just-saved valid session
+    # instead of ever attempting (and failing) a credential login.
+    ok_client = make_client(on_login_result=broken, storage_state_path=tmp_path / "ok.json")
+    with caplog.at_level(logging.ERROR, logger="bot.broker.mofid_playwright"):
+        await ok_client.login()  # must not raise ValueError
+    assert "callback raised" in caplog.text
+
+    caplog.clear()
+    bad_client = make_client(badlogin=1, on_login_result=broken, storage_state_path=tmp_path / "bad.json")
+    with caplog.at_level(logging.ERROR, logger="bot.broker.mofid_playwright"):
+        with pytest.raises(BrokerError, match="نام کاربری یا کلمه عبور اشتباه است"):
+            await bad_client.login()  # the *original* error, not the callback's
+    assert "callback raised" in caplog.text
+
+
+async def test_login_wraps_unexpected_errors_as_broker_errors(tmp_path):
+    """Mirrors place_order()'s own symmetry (test_unexpected_errors_keep_their_cause):
+    a raw bug anywhere in login() must still arrive as a BrokerError, both so
+    the scheduler retries it like any other failed attempt and so it reports
+    through on_login_result like any other failure."""
+    calls = []
+
+    async def record_call(success: bool, detail: str) -> None:
+        calls.append((success, detail))
+
+    client = MofidPlaywrightClient("u", "p", screenshot_dir=tmp_path / "shots", on_login_result=record_call)
+
+    async def boom() -> None:
+        raise ValueError("kaboom")
+
+    client._open_session = boom
+
+    with pytest.raises(BrokerError, match="kaboom") as excinfo:
+        await client.login()
+
+    assert isinstance(excinfo.value.__cause__, ValueError)
+    assert calls == [(False, "ValueError('kaboom')")]
+
+
+# --------------------------------------------------------------------------
 # place_order
 # --------------------------------------------------------------------------
 

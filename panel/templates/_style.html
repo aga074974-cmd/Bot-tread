@@ -6,6 +6,31 @@
   h1 .brand { display: block; color: #facc15; font-size: 0.7rem; font-weight: normal; }
   .top { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
   .top a { color: #94a3b8; font-size: 0.85rem; text-decoration: none; white-space: nowrap; }
+  .title-row { display: flex; align-items: center; gap: 0.5rem; }
+  /* The login-session status light: a plain dot, not a badge, so it reads at
+     a glance next to the title. Its ring is the page's own background color
+     rather than a border, so the dot still looks round against the dark
+     page instead of squared off by a box model edge. */
+  .session-light { width: 12px; height: 12px; border-radius: 50%; border: none; padding: 0;
+                    cursor: pointer; flex-shrink: 0; box-shadow: 0 0 0 2px #0f172a; }
+  .session-light-valid { background: #22c55e; }
+  .session-light-invalid { background: #ef4444; }
+  .session-light-checking { background: #eab308; animation: session-blink 0.8s ease-in-out infinite; }
+  @keyframes session-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) {
+    .session-light-checking { animation: none; opacity: 0.7; }
+  }
+  /* A second, independent toast — the orders table's #toast (below) does not
+     exist in the DOM at all on a fresh panel with zero orders yet, and the
+     session light has to work regardless of whether any order has ever run. */
+  #session-toast { position: fixed; inset-inline: 1rem; bottom: 1rem; background: #14532d; color: #86efac;
+                    border: 1px solid #166534; border-radius: 10px; padding: 0.8rem 1rem; font-size: 0.85rem;
+                    line-height: 1.7; z-index: 10; }
+  #session-toast.error { background: #450a0a; color: #fca5a5; border-color: #7f1d1d; }
+  #session-toast[hidden] { display: none; }
+  .checkbox-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: #cbd5e1;
+                   margin-top: 0.8rem; cursor: pointer; }
+  .checkbox-row input { width: auto; margin: 0; }
   .card { background: #1e293b; border-radius: 12px; padding: 1.2rem; margin-bottom: 1.2rem; }
   .card h2 { font-size: 1rem; margin-top: 0; }
   label { display: block; font-size: 0.85rem; color: #94a3b8; margin-top: 0.8rem; }

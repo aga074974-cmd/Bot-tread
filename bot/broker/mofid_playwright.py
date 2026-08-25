@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import Awaitable, Callable
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Locator, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -179,6 +180,7 @@ class MofidPlaywrightClient(BrokerClient):
         headless: bool = True,
         screenshot_dir: str | Path | None = None,
         storage_state_path: str | None = "auth_state.json",
+        on_login_result: Callable[[bool, str], Awaitable[None]] | None = None,
     ) -> None:
         self.username = username
         self.password = password
@@ -191,6 +193,7 @@ class MofidPlaywrightClient(BrokerClient):
         self._shot_dir = Path(screenshot_dir) if screenshot_dir else None
         self._shot_seq = 0
         self._storage_state_path = Path(storage_state_path) if storage_state_path else None
+        self._on_login_result = on_login_result
 
     async def _screenshot(self, label: str) -> None:
         if not self._shot_dir or not self._page:
@@ -297,7 +300,26 @@ class MofidPlaywrightClient(BrokerClient):
             )
         await button.click()
 
-    async def login(self) -> None:
+    async def _report_login_result(self, success: bool, detail: str = "") -> None:
+        """Tells whoever is tracking session health (the panel's status light
+        and its consecutive-failure counter) how a login attempt went. A bug
+        in that reporting must never turn a real login result into a
+        different one, so it is never allowed to raise."""
+        if self._on_login_result is None:
+            return
+        try:
+            await self._on_login_result(success, detail)
+        except Exception:
+            log.exception("on_login_result callback raised, ignoring")
+
+    async def _open_session(self) -> Locator:
+        """Launch a browser, load the saved session if any, and wait for the
+        page to settle into one of two states: the login form, or the app
+        itself. Shared by login() (which signs in when the form is what
+        showed up) and check_session() (which only ever reads this same
+        signal — it must never attempt a credential login on its own). The
+        password field locator is returned so callers tell the two states
+        apart with is_visible()."""
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=self.headless)
         # m.easytrader.ir is a mobile-only layout (bottom nav, buy/sell
@@ -309,10 +331,6 @@ class MofidPlaywrightClient(BrokerClient):
             storage_state=self._load_storage_state(), **device
         )
         self._page = await self._context.new_page()
-
-        # Real login happens even in dry-run: we need an authenticated page to
-        # reach the order screen and take verification screenshots. Only the
-        # final submit/confirm click in place_order() is skipped in dry-run.
         await self._page.goto(LOGIN_URL)
 
         password_field = self._page.locator(PASSWORD_INPUT)
@@ -332,6 +350,13 @@ class MofidPlaywrightClient(BrokerClient):
             ) from exc
 
         await self._screenshot("login_page")
+        return password_field
+
+    async def _do_login(self) -> None:
+        # Real login happens even in dry-run: we need an authenticated page to
+        # reach the order screen and take verification screenshots. Only the
+        # final submit/confirm click in place_order() is skipped in dry-run.
+        password_field = await self._open_session()
 
         # The password box is the login form's own marker: while it is on
         # screen no session was restored, so we have to sign in.
@@ -342,7 +367,7 @@ class MofidPlaywrightClient(BrokerClient):
 
             await self._click_login_button()
             try:
-                await app_markers.first.wait_for(state="visible", timeout=PAGE_READY_TIMEOUT_MS)
+                await self._app_markers().first.wait_for(state="visible", timeout=PAGE_READY_TIMEOUT_MS)
             except PlaywrightTimeoutError as exc:
                 await self._capture_failure("login_failed")
                 site_error = await self._site_error()
@@ -363,6 +388,32 @@ class MofidPlaywrightClient(BrokerClient):
 
         await self._screenshot("login_done")
         await self._save_storage_state()
+
+    async def login(self) -> None:
+        try:
+            await self._do_login()
+        except BrokerError as exc:
+            await self._report_login_result(False, str(exc))
+            raise
+        except Exception as exc:
+            await self._report_login_result(False, repr(exc))
+            raise BrokerError(f"unexpected error logging in: {exc!r}") from exc
+        else:
+            await self._report_login_result(True)
+
+    async def check_session(self) -> bool:
+        """Whether the saved session (auth_state.json) is still good, read
+        with exactly the signal login() itself uses — the login form's own
+        visibility — but never typing credentials or clicking anything. This
+        is a plain question for the panel's status light, not a login
+        attempt, so unlike login() it always resolves to a bool rather than
+        raising, and does not count toward the consecutive-failure streak."""
+        try:
+            password_field = await self._open_session()
+        except Exception as exc:
+            log.warning("session check inconclusive, treating the session as invalid: %r", exc)
+            return False
+        return not await password_field.is_visible()
 
     async def place_order(self, order: Order) -> str:
         try:

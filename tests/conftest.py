@@ -76,6 +76,7 @@ async def make_client(site: FakeSite, tmp_path: Path, monkeypatch: pytest.Monkey
         dry_run: bool = False,
         storage_state_path: str | Path | None = None,
         screenshot_dir: str | Path | None = None,
+        on_login_result=None,
         **scenario: object,
     ) -> mofid_playwright.MofidPlaywrightClient:
         monkeypatch.setattr(mofid_playwright, "LOGIN_URL", site.url(**scenario))
@@ -86,6 +87,7 @@ async def make_client(site: FakeSite, tmp_path: Path, monkeypatch: pytest.Monkey
             headless=True,
             screenshot_dir=screenshot_dir if screenshot_dir is not None else tmp_path / "shots",
             storage_state_path=str(storage_state_path or tmp_path / "auth_state.json"),
+            on_login_result=on_login_result,
         )
         clients.append(client)
         return client
@@ -137,7 +139,19 @@ def panel_store(panel_main, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture
-def panel_client(panel_main, panel_store):
+def panel_session_store(panel_main, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A session-state database of its own for each test, for the same
+    isolation reason as panel_store above — the login-status light's streak
+    must never leak between tests either."""
+    from panel.session_state import SessionStateStore
+
+    store = SessionStateStore(str(tmp_path / "session.db"))
+    monkeypatch.setattr(panel_main, "session_store", store)
+    return store
+
+
+@pytest.fixture
+def panel_client(panel_main, panel_store, panel_session_store):
     """Signed in. Deliberately not used as a context manager: the panel's
     startup hook reschedules orders and starts a purge loop, and neither
     belongs in a route test."""
