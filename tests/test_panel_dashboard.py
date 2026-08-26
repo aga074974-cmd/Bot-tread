@@ -172,23 +172,25 @@ async def test_the_title_is_two_lines_the_brand_in_yellow(panel_client: TestClie
     assert "h1 .brand { display: block;" in body  # forces the brand onto its own line
 
 
-async def test_the_session_light_sits_between_the_robot_and_the_title(panel_client: TestClient):
-    """[ربات] [چراغ] پنل ربات — right after the robot animation, right
-    before the word «پنل», no longer inside the title text itself."""
+async def test_the_session_light_sits_next_to_the_robot_animation(panel_client: TestClient):
+    """پنل ربات ... [ربات] [چراغ] — the light stays grouped right after the
+    robot animation, not inside the title text and not off on its own."""
     body = panel_client.get("/").text
 
     top_start = body.index('class="top"')
+    h1_pos = body.index("<h1>", top_start)
     badge_pos = body.index('class="robot-badge"', top_start)
     light_pos = body.index('id="session-light"', top_start)
-    h1_pos = body.index("<h1>", top_start)
 
-    assert badge_pos < light_pos < h1_pos
+    assert top_start < h1_pos < badge_pos < light_pos
 
 
 async def test_the_robot_badge_sits_inline_with_the_header_title(panel_client: TestClient):
     """Decorative only: inline SVG/CSS+SMIL, no external image or script
     dependency, and hidden from screen readers so it is not read aloud. It
-    lives inside .top, alongside the <h1>, not as a block below it."""
+    lives inside .top, alongside the <h1>, not as a block below it. The
+    title reads first (right, in this RTL page), the robot animation after
+    it (left) — matching every earlier version of this header."""
     body = panel_client.get("/").text
 
     assert 'class="robot-badge" aria-hidden="true"' in body
@@ -197,14 +199,14 @@ async def test_the_robot_badge_sits_inline_with_the_header_title(panel_client: T
     assert "rf-bob" in body
 
     top_start = body.index('class="top"')
-    badge_pos = body.index('class="robot-badge"', top_start)
     h1_pos = body.index("<h1>", top_start)
+    badge_pos = body.index('class="robot-badge"', top_start)
     manual_login_pos = body.index('id="manual-login"', top_start)
 
-    # same header row: badge (with the light) comes before <h1> now, both
+    # same header row: <h1> comes before the badge (with the light), both
     # inside .top, and the whole header is done before the manual-login
     # section and order form.
-    assert top_start < badge_pos < h1_pos < manual_login_pos < body.index("سفارش جدید")
+    assert top_start < h1_pos < badge_pos < manual_login_pos < body.index("سفارش جدید")
 
 
 # --------------------------------------------------------------------------
