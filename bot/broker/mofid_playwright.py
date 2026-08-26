@@ -349,7 +349,6 @@ class MofidPlaywrightClient(BrokerClient):
                 "page never showed either the login form or the app — see the login_stuck screenshot"
             ) from exc
 
-        await self._screenshot("login_page")
         return password_field
 
     async def _do_login(self) -> None:
@@ -386,7 +385,6 @@ class MofidPlaywrightClient(BrokerClient):
         else:
             log.info("restored saved session, skipping credential login for %s", self.username)
 
-        await self._screenshot("login_done")
         await self._save_storage_state()
 
     async def login(self) -> None:
@@ -419,10 +417,10 @@ class MofidPlaywrightClient(BrokerClient):
         try:
             return await self._do_place_order(order)
         except BrokerError:
-            await self._capture_failure("error")
+            await self._save_page_html()
             raise
         except Exception as exc:
-            await self._capture_failure("error")
+            await self._save_page_html()
             raise BrokerError(f"unexpected error placing order: {exc!r}") from exc
 
     async def _check_ticket_symbol(self, expected: str) -> None:
@@ -603,7 +601,6 @@ class MofidPlaywrightClient(BrokerClient):
         await page.get_by_placeholder(SYMBOL_SEARCH_PLACEHOLDER).fill(order.symbol)
         await self._screenshot("search")
         await page.get_by_text(order.symbol, exact=False).first.click()
-        await self._screenshot("symbol_page")
 
         side_button_text = BUY_BUTTON_TEXT if order.side == Side.BUY else SELL_BUTTON_TEXT
         await page.get_by_text(side_button_text, exact=True).first.click()
@@ -615,11 +612,10 @@ class MofidPlaywrightClient(BrokerClient):
             # Market orders leave the price box on its pre-filled last-trade
             # price; only override it for an explicit limit price.
             await self._enter_number(PRICE_INPUT, order.price, "price")
-        await self._screenshot("form_filled")
 
-        # Read back after the picture rather than between the boxes, so nothing
-        # delays the shot of the filled form — and still before anything is
-        # sent, which is the only place the check has to be.
+        # Read back before anything is sent, which is the only place the
+        # check has to be. _enter_number() already photographed each box
+        # right as its own digits landed.
         await self._check_number(QUANTITY_INPUT, order.quantity, "quantity")
         if order.order_type == OrderType.LIMIT:
             await self._check_number(PRICE_INPUT, order.price, "price")
@@ -641,7 +637,6 @@ class MofidPlaywrightClient(BrokerClient):
             page, _submit_selectors(order.side), f"{order.side.value} send button"
         )
         await submit.click()
-        await self._screenshot("after_submit")
 
         # However this run ends, a shot at the half-second mark is not
         # optional: the reaction to a live order is worth having even if
@@ -658,12 +653,11 @@ class MofidPlaywrightClient(BrokerClient):
             # Nothing here says the order failed — only that we did not
             # recognise the reply. SUCCESS_TEXT is still a guess, so keep the
             # markup: it carries the wording the site actually uses.
-            await self._capture_failure("no_confirmation")
+            await self._save_page_html()
             raise BrokerError(
                 f"order was sent, but no message matching {SUCCESS_TEXT!r} appeared — "
                 "it may well have gone through. Read the site's real wording out of "
-                f"{PAGE_HTML_NAME} in that run's folder (and the no_confirmation "
-                "screenshot for what was on screen), then correct SUCCESS_TEXT"
+                f"{PAGE_HTML_NAME} in that run's folder, then correct SUCCESS_TEXT"
             ) from exc
 
         return f"submitted-{order.id}"

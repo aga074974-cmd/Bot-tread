@@ -8,18 +8,19 @@
 </head>
 <body>
 <div class="top">
-  <div class="title-row">
-    <h1>پنل ربات<span class="brand">(کارگزاری مفید)</span></h1>
+  <h1>
+    پنل
     <button type="button" id="session-light"
             class="session-light {{ 'session-light-valid' if session_valid else 'session-light-invalid' }}"
             onclick="checkSession()"
             aria-label="وضعیت نشست ورود؛ برای بررسی دوباره ضربه بزنید"
             title="{{ 'نشست فعال است' if session_valid else 'نشست نامعتبر است یا هنوز بررسی نشده' }}"></button>
-  </div>
+    ربات<span class="brand">(کارگزاری مفید)</span>
+  </h1>
   {# Purely decorative — pure SVG/CSS, no image or script dependency — so it
      is hidden from screen readers rather than read aloud as stray shapes. #}
   <div class="robot-badge" aria-hidden="true">
-    <svg viewBox="0 0 140 84" role="img" focusable="false">
+    <svg viewBox="0 0 120 88" role="img" focusable="false">
       <defs>
         <linearGradient id="botBody" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#1a6b70"/>
@@ -27,23 +28,19 @@
         </linearGradient>
       </defs>
       <g class="bot-group">
-        <line x1="89" y1="8" x2="89" y2="14" stroke="#0e7490" stroke-width="2" stroke-linecap="round"/>
-        <circle class="antenna-tip" cx="89" cy="6" r="2.6" fill="#facc15"/>
-        <rect x="76" y="14" width="26" height="20" rx="7" fill="url(#botBody)"/>
-        <circle class="eye" cx="84" cy="24" r="2.4" fill="#5eead4"/>
-        <circle class="eye" cx="94" cy="24" r="2.4" fill="#5eead4"/>
-        <rect x="66" y="30" width="42" height="42" rx="12" fill="url(#botBody)"/>
-        <rect x="72" y="38" width="30" height="10" rx="5" fill="#0e7490" opacity="0.5"/>
-        <rect x="46" y="44" width="22" height="9" rx="4.5" fill="url(#botBody)"/>
-        <rect x="36" y="38" width="13" height="20" rx="6" fill="url(#botBody)"/>
+        <line x1="76" y1="9" x2="76" y2="15" stroke="#0e7490" stroke-width="2.2" stroke-linecap="round"/>
+        <circle class="antenna-tip" cx="76" cy="6" r="2.8" fill="#facc15"/>
+        <rect x="63" y="15" width="26" height="20" rx="7" fill="url(#botBody)"/>
+        <circle class="eye" cx="70" cy="25" r="2.6" fill="#5eead4"/>
+        <circle class="eye" cx="82" cy="25" r="2.6" fill="#5eead4"/>
+        <rect x="55" y="32" width="42" height="44" rx="13" fill="url(#botBody)"/>
+        <rect x="61" y="41" width="30" height="10" rx="5" fill="#0e7490" opacity="0.5"/>
+        <rect x="91" y="38" width="11" height="26" rx="5.5" fill="url(#botBody)"/>
+        <g class="wave-arm">
+          <line x1="55" y1="40" x2="33" y2="13" stroke="url(#botBody)" stroke-width="9" stroke-linecap="round"/>
+          <circle cx="33" cy="13" r="6.5" fill="url(#botBody)"/>
+        </g>
       </g>
-      <rect class="bill bill-back" x="8" y="40" width="34" height="20" rx="3" fill="#a16207"/>
-      <rect class="bill bill-mid" x="11" y="36" width="34" height="20" rx="3" fill="#ca8a04"/>
-      <g class="bill-flip">
-        <rect x="13" y="32" width="34" height="20" rx="3" fill="#facc15"/>
-        <line x1="18" y1="42" x2="42" y2="42" stroke="#a16207" stroke-width="1.5" stroke-linecap="round"/>
-      </g>
-      <rect class="thumb" x="41" y="34" width="6" height="10" rx="3" fill="#0e7490"/>
     </svg>
   </div>
 </div>

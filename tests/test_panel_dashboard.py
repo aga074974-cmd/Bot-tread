@@ -168,7 +168,23 @@ async def test_history_needs_a_login(panel_main):
 async def test_the_title_is_two_lines_the_brand_in_yellow(panel_client: TestClient):
     body = panel_client.get("/").text
 
-    assert '<h1>پنل ربات<span class="brand">(کارگزاری مفید)</span></h1>' in body
+    assert '<span class="brand">(کارگزاری مفید)</span>' in body
+    assert "h1 .brand { display: block;" in body  # forces the brand onto its own line
+
+
+async def test_the_session_light_sits_between_the_two_words_of_the_title(panel_client: TestClient):
+    """پنل [چراغ] ربات — the light interrupts the title text itself, in the
+    same line, rather than sitting beside the whole title as a block."""
+    body = panel_client.get("/").text
+
+    h1_start = body.index("<h1>")
+    h1_html = body[h1_start:body.index("</h1>", h1_start)]
+
+    panel_word_pos = h1_html.index("پنل")
+    light_pos = h1_html.index('id="session-light"')
+    robot_word_pos = h1_html.index("ربات")
+
+    assert panel_word_pos < light_pos < robot_word_pos
 
 
 async def test_the_robot_badge_sits_inline_with_the_header_title(panel_client: TestClient):
@@ -179,11 +195,11 @@ async def test_the_robot_badge_sits_inline_with_the_header_title(panel_client: T
 
     assert 'class="robot-badge" aria-hidden="true"' in body
     assert "<svg viewBox=" in body
-    assert "@keyframes bill-flip" in body
-    assert "@keyframes thumb-riffle" in body
+    assert "@keyframes wave" in body
+    assert "wave-arm" in body
 
     top_start = body.index('class="top"')
-    h1_pos = body.index("<h1>پنل ربات", top_start)
+    h1_pos = body.index("<h1>", top_start)
     badge_pos = body.index('class="robot-badge"', top_start)
     manual_login_pos = body.index('id="manual-login"', top_start)
 
@@ -270,11 +286,11 @@ async def test_manual_login_form_appears_once_the_threshold_is_reached(
 
 async def test_the_robot_badge_is_not_clipped(panel_client: TestClient):
     """The badge's own box and its inner svg must both allow overflow, or
-    parts of the SVG art (which extends slightly past its nominal box during
-    the counting animation) would get cut off."""
+    parts of the SVG art (which extends past its nominal box at the top of
+    the waving arm's swing) would get cut off."""
     body = panel_client.get("/").text
 
-    assert ".robot-badge { flex-shrink: 0; width: 96px; height: 68px; overflow: visible; }" in body
+    assert ".robot-badge { flex-shrink: 0; width: 120px; height: 88px; overflow: visible; }" in body
     assert "overflow: visible; display: block;" in body
 
 

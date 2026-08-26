@@ -6,13 +6,13 @@
   h1 .brand { display: block; color: #facc15; font-size: 0.7rem; font-weight: normal; }
   .top { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
   .top a { color: #94a3b8; font-size: 0.85rem; text-decoration: none; white-space: nowrap; }
-  .title-row { display: flex; align-items: center; gap: 0.5rem; }
-  /* The login-session status light: a plain dot, not a badge, so it reads at
-     a glance next to the title. Its ring is the page's own background color
-     rather than a border, so the dot still looks round against the dark
-     page instead of squared off by a box model edge. */
+  /* The login-session status light: a plain dot, not a badge, sitting inline
+     between the two words of the title itself. Its ring is the page's own
+     background color rather than a border, so it still looks round against
+     the dark page instead of squared off by a box model edge. */
   .session-light { width: 12px; height: 12px; border-radius: 50%; border: none; padding: 0;
-                    cursor: pointer; flex-shrink: 0; box-shadow: 0 0 0 2px #0f172a; }
+                    cursor: pointer; flex-shrink: 0; vertical-align: middle; margin: 0 0.15rem;
+                    box-shadow: 0 0 0 2px #0f172a; }
   .session-light-valid { background: #22c55e; }
   .session-light-invalid { background: #ef4444; }
   .session-light-checking { background: #eab308; animation: session-blink 0.8s ease-in-out infinite; }
@@ -90,17 +90,21 @@
      the browser's default [hidden]{display:none} at equal specificity — so
      toggling the hidden attribute alone would not actually hide either one. */
   .gallery-grid[hidden], .gallery-full[hidden] { display: none; }
-  /* A small decorative badge next to the header title: a robot counting a
-     stack of banknotes. Pure inline SVG/CSS — no image file and no script,
-     so there is nothing here to load or fail. Sized generously and left
-     unclipped (overflow: visible throughout) so nothing gets cut off. */
-  .robot-badge { flex-shrink: 0; width: 96px; height: 68px; overflow: visible; }
+  /* A small decorative badge next to the header title: a robot waving hello.
+     Pure inline SVG/CSS — no image file and no script, so there is nothing
+     here to load or fail. Sized generously and left unclipped (overflow:
+     visible throughout) so nothing, including the waving arm's swing, gets
+     cut off. */
+  .robot-badge { flex-shrink: 0; width: 120px; height: 88px; overflow: visible; }
   .robot-badge svg { width: 100%; height: 100%; overflow: visible; display: block; }
   .robot-badge .bot-group { animation: bot-bob 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
   .robot-badge .eye { transform-box: fill-box; transform-origin: 50% 50%; animation: eye-blink 4s ease-in-out infinite; }
   .robot-badge .antenna-tip { transform-box: fill-box; transform-origin: 50% 50%; animation: tip-pulse 1.8s ease-in-out infinite; }
-  .robot-badge .bill-flip { transform-box: fill-box; transform-origin: 100% 50%; animation: bill-flip 1s ease-in-out infinite; }
-  .robot-badge .thumb { transform-box: fill-box; transform-origin: 50% 100%; animation: thumb-riffle 1s ease-in-out infinite; }
+  /* The waving arm pivots around the shoulder joint — an absolute point in
+     the svg's own coordinate space, not a percentage of the arm's own
+     (diagonal, off-center) bounding box, so the default view-box transform
+     origin is used here instead of the fill-box trick the other parts use. */
+  .robot-badge .wave-arm { transform-origin: 55px 40px; animation: wave 1.3s ease-in-out infinite; }
   @keyframes bot-bob {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-1.5px); }
@@ -113,18 +117,12 @@
     0%, 100% { opacity: 0.7; transform: scale(1); }
     50% { opacity: 1; transform: scale(1.25); }
   }
-  @keyframes bill-flip {
-    0%, 40% { transform: scaleX(1); }
-    55% { transform: scaleX(0.1); }
-    70%, 100% { transform: scaleX(1); }
-  }
-  @keyframes thumb-riffle {
-    0%, 40% { transform: translateY(0) rotate(0deg); }
-    55% { transform: translateY(-4px) rotate(-12deg); }
-    70%, 100% { transform: translateY(0) rotate(0deg); }
+  @keyframes wave {
+    0%, 100% { transform: rotate(-15deg); }
+    50% { transform: rotate(35deg); }
   }
   @media (prefers-reduced-motion: reduce) {
     .robot-badge .bot-group, .robot-badge .eye, .robot-badge .antenna-tip,
-    .robot-badge .bill-flip, .robot-badge .thumb { animation: none; }
+    .robot-badge .wave-arm { animation: none; }
   }
 </style>

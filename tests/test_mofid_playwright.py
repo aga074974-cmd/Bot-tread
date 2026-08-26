@@ -83,7 +83,7 @@ async def test_field_that_refuses_both_is_reported(make_client, tmp_path):
     with pytest.raises(BrokerError, match="could not enter the username"):
         await client.login()
 
-    assert shots(tmp_path / "shots") == ["01_login_page.png", "02_login_input_rejected.png"]
+    assert shots(tmp_path / "shots") == ["01_login_input_rejected.png"]
     assert 'id="password"' in page_dump(tmp_path / "shots")
 
 
@@ -95,7 +95,7 @@ async def test_missing_login_button_is_reported(make_client, tmp_path):
     with pytest.raises(BrokerError, match="could not find the login button"):
         await client.login()
 
-    assert "03_login_button_missing.png" in shots(tmp_path / "shots")
+    assert has_shot(tmp_path / "shots", "login_button_missing")
     assert 'id="user-name"' in page_dump(tmp_path / "shots")
 
 
@@ -136,7 +136,7 @@ async def test_the_sites_own_error_message_is_reported(make_client, monkeypatch,
 
     assert "the site says" in str(excinfo.value)
     assert "نام کاربری یا کلمه عبور اشتباه است" in caplog.text
-    assert "03_login_failed.png" in shots(tmp_path / "shots")
+    assert has_shot(tmp_path / "shots", "login_failed")
 
 
 async def test_a_step_with_no_message_falls_back_to_the_generic_reason(
@@ -546,16 +546,18 @@ async def test_a_box_that_bottoms_out_at_zero_counts_as_cleared(make_client):
     assert int((await record(client))["quantity"]) == 80
 
 
-async def test_the_form_is_photographed_before_the_numbers_are_checked(make_client, tmp_path):
-    """The picture is of the moment the numbers landed, so it exists even when
-    the check that follows refuses to send the order."""
+async def test_the_quantity_is_still_photographed_even_when_the_check_later_rejects_it(
+    make_client, tmp_path
+):
+    """_enter_number()'s own picture is of the moment the digits landed, so it
+    exists even when the check that follows refuses to send the order."""
     client = make_client(dry_run=False, qty="garbled")
     await client.login()
 
     with pytest.raises(BrokerError, match="not sending an order for the wrong amount"):
         await client.place_order(an_order(quantity=80))
 
-    assert has_shot(tmp_path / "shots", "form_filled")
+    assert has_shot(tmp_path / "shots", "quantity_filled")
     assert (await record(client))["submitClicked"] is False
 
 
@@ -647,24 +649,10 @@ async def test_no_confirmation_step_is_taken(make_client):
     assert (await record(client))["confirmClicked"] is False
 
 
-async def test_the_500ms_shot_is_not_a_duplicate_of_the_click_itself(make_client, tmp_path, monkeypatch):
-    """If the site answers within the half-second, the midpoint screenshot has
-    to show that — not the same "sending" screen the one taken on the click
-    already caught."""
-    monkeypatch.setattr(mofid_playwright, "SUBMIT_MIDPOINT_MS", SHIPPED_MIDPOINT_MS)
-    client = make_client(dry_run=False, reply=200)  # lands before the midpoint shot
-    await client.login()
-
-    await client.place_order(an_order())
-
-    clicked = shot_named(tmp_path / "shots", "after_submit").stat().st_size
-    midpoint = shot_named(tmp_path / "shots", "after_submit_500ms").stat().st_size
-    assert clicked != midpoint, "the 500ms screenshot caught the same screen as the click"
-
-
-async def test_the_1s_shot_still_follows_the_500ms_one(make_client, tmp_path, monkeypatch):
-    """A reply that lands between the two waits still leaves a distinct
-    picture at each checkpoint."""
+async def test_the_1s_shot_is_not_a_duplicate_of_the_500ms_one(make_client, tmp_path, monkeypatch):
+    """A reply that lands between the two waits must leave a distinct picture
+    at each checkpoint — not the same "sending" screen caught twice, which is
+    what a wait that silently does nothing would produce."""
     monkeypatch.setattr(mofid_playwright, "SUBMIT_MIDPOINT_MS", SHIPPED_MIDPOINT_MS)
     monkeypatch.setattr(mofid_playwright, "SUBMIT_SETTLE_MS", SHIPPED_SETTLE_MS)
     client = make_client(dry_run=False, reply=600)  # lands between the two waits
@@ -672,9 +660,9 @@ async def test_the_1s_shot_still_follows_the_500ms_one(make_client, tmp_path, mo
 
     await client.place_order(an_order())
 
-    clicked = shot_named(tmp_path / "shots", "after_submit").stat().st_size
+    midpoint = shot_named(tmp_path / "shots", "after_submit_500ms").stat().st_size
     settled = shot_named(tmp_path / "shots", "after_submit_1s").stat().st_size
-    assert clicked != settled, "the final screenshot caught the same screen as the click"
+    assert midpoint != settled, "the 1s screenshot caught the same screen as the 500ms one"
 
 
 async def test_the_500ms_screenshot_is_taken_even_when_the_order_ends_in_error(make_client, tmp_path):
@@ -700,7 +688,6 @@ async def test_missing_success_message_is_reported(make_client, tmp_path):
 
     assert "may well have gone through" in str(excinfo.value)
     assert mofid_playwright.PAGE_HTML_NAME in str(excinfo.value)
-    assert has_shot(tmp_path / "shots", "no_confirmation")
     assert "در حال پردازش" in page_dump(tmp_path / "shots")
 
 
@@ -727,19 +714,14 @@ async def test_every_step_leaves_a_numbered_screenshot(make_client, tmp_path):
     await client.place_order(an_order())
 
     assert shots(tmp_path / "shots") == [
-        "01_login_page.png",
-        "02_login_filled.png",
-        "03_login_done.png",
-        "04_landing.png",
-        "05_search.png",
-        "06_symbol_page.png",
-        "07_ticket_opened.png",
-        "08_quantity_keypad.png",
-        "09_quantity_filled.png",
-        "10_form_filled.png",
-        "11_after_submit.png",
-        "12_after_submit_500ms.png",
-        "13_after_submit_1s.png",
+        "01_login_filled.png",
+        "02_landing.png",
+        "03_search.png",
+        "04_ticket_opened.png",
+        "05_quantity_keypad.png",
+        "06_quantity_filled.png",
+        "07_after_submit_500ms.png",
+        "08_after_submit_1s.png",
     ]
 
 
