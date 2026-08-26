@@ -12,6 +12,11 @@
   {# Purely decorative — pure SVG/CSS, no image or script dependency — so it
      is hidden from screen readers rather than read aloud as stray shapes. #}
   <div class="robot-and-light">
+    <button type="button" id="session-light"
+            class="session-light {{ 'session-light-valid' if session_valid else 'session-light-invalid' }}"
+            onclick="checkSession()"
+            aria-label="وضعیت نشست ورود؛ برای بررسی دوباره ضربه بزنید"
+            title="{{ 'نشست فعال است' if session_valid else 'نشست نامعتبر است یا هنوز بررسی نشده' }}"></button>
     <div class="robot-badge" aria-hidden="true">
       <svg xmlns="http://www.w3.org/2000/svg" width="680" height="430" viewBox="0 0 680 430" role="img">
       <title>ربات سلام می‌دهد و از دریچه می‌افتد</title>
@@ -124,11 +129,6 @@
       </g>
       </svg>
     </div>
-    <button type="button" id="session-light"
-            class="session-light {{ 'session-light-valid' if session_valid else 'session-light-invalid' }}"
-            onclick="checkSession()"
-            aria-label="وضعیت نشست ورود؛ برای بررسی دوباره ضربه بزنید"
-            title="{{ 'نشست فعال است' if session_valid else 'نشست نامعتبر است یا هنوز بررسی نشده' }}"></button>
   </div>
 </div>
 

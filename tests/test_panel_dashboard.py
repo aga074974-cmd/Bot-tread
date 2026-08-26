@@ -172,17 +172,17 @@ async def test_the_title_is_two_lines_the_brand_in_yellow(panel_client: TestClie
     assert "h1 .brand { display: block;" in body  # forces the brand onto its own line
 
 
-async def test_the_session_light_sits_next_to_the_robot_animation(panel_client: TestClient):
-    """پنل ربات ... [ربات] [چراغ] — the light stays grouped right after the
-    robot animation, not inside the title text and not off on its own."""
+async def test_the_session_light_sits_between_the_robot_and_the_title(panel_client: TestClient):
+    """پنل ربات ... [چراغ] ... ربات — the light sits in the gap between the
+    robot animation and the title, not tucked past the robot's far edge."""
     body = panel_client.get("/").text
 
     top_start = body.index('class="top"')
     h1_pos = body.index("<h1>", top_start)
-    badge_pos = body.index('class="robot-badge"', top_start)
     light_pos = body.index('id="session-light"', top_start)
+    badge_pos = body.index('class="robot-badge"', top_start)
 
-    assert top_start < h1_pos < badge_pos < light_pos
+    assert top_start < h1_pos < light_pos < badge_pos
 
 
 async def test_the_robot_badge_sits_inline_with_the_header_title(panel_client: TestClient):
