@@ -8,41 +8,128 @@
 </head>
 <body>
 <div class="top">
-  <h1>
-    پنل
+  {# Purely decorative — pure SVG/CSS, no image or script dependency — so it
+     is hidden from screen readers rather than read aloud as stray shapes. #}
+  <div class="robot-and-light">
+    <div class="robot-badge" aria-hidden="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="680" height="430" viewBox="0 0 680 430" role="img">
+      <title>ربات سلام می‌دهد و از دریچه می‌افتد</title>
+      <defs>
+      <clipPath id="rf-holeClip"><rect x="0" y="0" width="680" height="395"/></clipPath>
+      </defs>
+      <style>
+      .rf-fall{animation:rf-drop 5s ease-in infinite}
+      @keyframes rf-drop{0%,58%{transform:translateY(0)}66%{transform:translateY(8px)}100%{transform:translateY(340px)}}
+      .rf-bob{animation:rf-bobw 5s linear infinite}
+      @keyframes rf-bobw{0%{transform:translateY(0)}26%{transform:translateY(-3px)}52%,58%{transform:translateY(0)}100%{transform:translateY(0)}}
+      .rf-eyes{transform-box:fill-box;transform-origin:center;animation:rf-blink 5s infinite}
+      @keyframes rf-blink{0%,42%,100%{transform:scaleY(1)}45%{transform:scaleY(.12)}}
+      .rf-lookdown{animation:rf-eyedn 5s linear infinite}
+      @keyframes rf-eyedn{0%,58%{transform:translateY(0)}64%,100%{transform:translateY(5px)}}
+      .rf-arc{opacity:0;animation:rf-pulse 5s linear infinite}.rf-a2{animation-delay:.15s}
+      @keyframes rf-pulse{0%,10%{opacity:0}18%{opacity:.85}30%{opacity:.4}40%{opacity:.85}50%,100%{opacity:0}}
+      .rf-bubble{opacity:0;animation:rf-pop 5s linear infinite}
+      @keyframes rf-pop{0%{opacity:0;transform:translateY(12px)}8%{opacity:1;transform:translateY(0)}48%{opacity:1;transform:translateY(0)}56%,100%{opacity:0;transform:translateY(-8px)}}
+      .rf-doorL{transform-box:fill-box;transform-origin:left center;animation:rf-swingL 5s ease-in-out infinite}
+      @keyframes rf-swingL{0%,56%{transform:rotate(0deg)}66%,90%{transform:rotate(90deg)}100%{transform:rotate(0deg)}}
+      .rf-doorR{transform-box:fill-box;transform-origin:right center;animation:rf-swingR 5s ease-in-out infinite}
+      @keyframes rf-swingR{0%,56%{transform:rotate(0deg)}66%,90%{transform:rotate(-90deg)}100%{transform:rotate(0deg)}}
+      .rf-hole{animation:rf-holeshow 5s linear infinite}
+      @keyframes rf-holeshow{0%,56%{opacity:0}60%,92%{opacity:1}100%{opacity:0}}
+      </style>
+      <g class="rf-bubble">
+      <polygon points="402,78 380.8,89 377.4,105 344,104 318,116 292,104 258.6,105 255.2,89 234,78 255.2,67 258.6,51 292,52 318,40 344,52 377.4,51 380.8,67" fill="#e2e8f0" stroke="#64748b" stroke-width="2" stroke-linejoin="round"/>
+      <text x="318" y="86" text-anchor="middle" font-size="20" font-weight="500" fill="#1e293b">خوش گلیبسن</text>
+      </g>
+      <g transform="translate(0,80)">
+      <ellipse class="rf-hole" cx="340" cy="318" rx="72" ry="12" fill="#1e293b" opacity="0"/>
+      <g clip-path="url(#rf-holeClip)">
+      <g class="rf-fall">
+      <g class="rf-bob">
+      <g>
+      <animateTransform attributeName="transform" type="rotate" dur="5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.08;0.16;0.24;0.32;0.40;0.48;0.58;1" keySplines=".4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1" values="0 274 184;0 274 184;0 274 184;0 274 184;0 274 184;0 274 184;0 274 184;0 274 184;0 274 184"/>
+      <line x1="274" y1="186" x2="262" y2="214" stroke="#94a3b8" stroke-width="15" stroke-linecap="round"/>
+      <line x1="262" y1="212" x2="252" y2="246" stroke="#94a3b8" stroke-width="15" stroke-linecap="round"/>
+      <circle cx="262" cy="213" r="10" fill="#cbd5e1" stroke="#64748b" stroke-width="2"/>
+      <circle cx="262" cy="213" r="3.5" fill="#94a3b8" stroke="#64748b" stroke-width="1.5"/>
+      <g transform="translate(252,246) rotate(197) scale(0.7)">
+      <rect x="-11" y="-10" width="22" height="26" rx="7" fill="#94a3b8" stroke="#64748b" stroke-width="2.8"/>
+      <rect x="-32" y="-34" width="10" height="26" rx="5" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8" transform="rotate(-52 -27 -8)"/>
+      <rect x="-20" y="-42" width="40" height="46" rx="12" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8"/>
+      <rect x="-21" y="-70" width="10" height="32" rx="5" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8" transform="rotate(-22 -16 -40)"/>
+      <rect x="-9.5" y="-76" width="10" height="38" rx="5" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8" transform="rotate(-8 -4.5 -40)"/>
+      <rect x="1.5" y="-76" width="10" height="38" rx="5" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8" transform="rotate(6 6.5 -40)"/>
+      <rect x="12" y="-70" width="10" height="32" rx="5" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8" transform="rotate(20 17 -40)"/>
+      </g>
+      </g>
+      <g>
+      <animateTransform attributeName="transform" type="rotate" dur="5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.08;0.16;0.24;0.32;0.40;0.48;0.58;1" keySplines=".4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1" values="119 406 184;0 406 184;-14 406 184;2 406 184;-14 406 184;2 406 184;0 406 184;119 406 184;119 406 184"/>
+      <line x1="406" y1="186" x2="444" y2="158" stroke="#94a3b8" stroke-width="15" stroke-linecap="round"/>
+      <g>
+      <animateTransform attributeName="transform" type="rotate" dur="5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.08;0.16;0.24;0.32;0.40;0.48;0.58;1" keySplines=".4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1;.4 0 .6 1" values="37 444 158;2 444 158;-10 444 158;4 444 158;-10 444 158;4 444 158;2 444 158;37 444 158;37 444 158"/>
+      <line x1="444" y1="158" x2="462" y2="118" stroke="#94a3b8" stroke-width="15" stroke-linecap="round"/>
+      <circle cx="444" cy="158" r="10" fill="#cbd5e1" stroke="#64748b" stroke-width="2"/>
+      <circle cx="444" cy="158" r="3.5" fill="#94a3b8" stroke="#64748b" stroke-width="1.5"/>
+      <g transform="translate(462,118) rotate(24) scale(0.7)">
+      <rect x="-11" y="-10" width="22" height="26" rx="7" fill="#94a3b8" stroke="#64748b" stroke-width="2.8"/>
+      <rect x="-32" y="-34" width="10" height="26" rx="5" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8" transform="rotate(-52 -27 -8)"/>
+      <rect x="-20" y="-42" width="40" height="46" rx="12" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8"/>
+      <rect x="-21" y="-70" width="10" height="32" rx="5" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8" transform="rotate(-22 -16 -40)"/>
+      <rect x="-9.5" y="-76" width="10" height="38" rx="5" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8" transform="rotate(-8 -4.5 -40)"/>
+      <rect x="1.5" y="-76" width="10" height="38" rx="5" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8" transform="rotate(6 6.5 -40)"/>
+      <rect x="12" y="-70" width="10" height="32" rx="5" fill="#cbd5e1" stroke="#64748b" stroke-width="2.8" transform="rotate(20 17 -40)"/>
+      </g>
+      </g>
+      </g>
+      <rect x="272" y="152" width="136" height="114" rx="24" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+      <rect x="296" y="176" width="88" height="34" rx="9" fill="#1e293b"/>
+      <circle cx="318" cy="193" r="5" fill="#38bdf8"/>
+      <circle cx="340" cy="193" r="5" fill="#4ade80"/>
+      <circle cx="362" cy="193" r="5" fill="#f59e0b"/>
+      <rect x="326" y="142" width="28" height="14" rx="5" fill="#94a3b8"/>
+      <g>
+      <circle cx="274" cy="184" r="15" fill="#cbd5e1" stroke="#64748b" stroke-width="2"/>
+      <circle cx="274" cy="174" r="2.6" fill="#64748b"/>
+      <circle cx="266" cy="190" r="2.6" fill="#64748b"/>
+      <circle cx="282" cy="190" r="2.6" fill="#64748b"/>
+      <circle cx="274" cy="184" r="4.5" fill="#94a3b8" stroke="#64748b" stroke-width="1.5"/>
+      </g>
+      <g>
+      <circle cx="406" cy="184" r="15" fill="#cbd5e1" stroke="#64748b" stroke-width="2"/>
+      <circle cx="406" cy="174" r="2.6" fill="#64748b"/>
+      <circle cx="398" cy="190" r="2.6" fill="#64748b"/>
+      <circle cx="414" cy="190" r="2.6" fill="#64748b"/>
+      <circle cx="406" cy="184" r="4.5" fill="#94a3b8" stroke="#64748b" stroke-width="1.5"/>
+      </g>
+      <rect x="300" y="264" width="26" height="38" rx="9" fill="#94a3b8"/>
+      <rect x="354" y="264" width="26" height="38" rx="9" fill="#94a3b8"/>
+      <rect x="286" y="296" width="50" height="18" rx="9" fill="#475569"/>
+      <rect x="344" y="296" width="50" height="18" rx="9" fill="#475569"/>
+      <line x1="340" y1="64" x2="340" y2="46" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="340" cy="38" r="7" fill="#f59e0b"/>
+      <rect x="288" y="62" width="104" height="80" rx="22" fill="#cbd5e1" stroke="#64748b" stroke-width="2"/>
+      <rect x="302" y="78" width="76" height="48" rx="12" fill="#1e293b"/>
+      <g class="rf-lookdown">
+      <g class="rf-eyes"><circle cx="322" cy="97" r="7.5" fill="#38bdf8"/><circle cx="358" cy="97" r="7.5" fill="#38bdf8"/></g>
+      <path d="M322 113 Q340 125 358 113" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/>
+      </g>
+      <path class="rf-arc rf-a1" d="M520 112 Q536 90 520 68" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+      <path class="rf-arc rf-a2" d="M538 120 Q560 90 538 60" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+      </g>
+      </g>
+      </g>
+      <rect class="rf-doorL" x="268" y="310" width="72" height="16" rx="3" fill="#94a3b8" stroke="#64748b" stroke-width="2"/>
+      <rect class="rf-doorR" x="340" y="310" width="72" height="16" rx="3" fill="#94a3b8" stroke="#64748b" stroke-width="2"/>
+      </g>
+      </svg>
+    </div>
     <button type="button" id="session-light"
             class="session-light {{ 'session-light-valid' if session_valid else 'session-light-invalid' }}"
             onclick="checkSession()"
             aria-label="وضعیت نشست ورود؛ برای بررسی دوباره ضربه بزنید"
             title="{{ 'نشست فعال است' if session_valid else 'نشست نامعتبر است یا هنوز بررسی نشده' }}"></button>
-    ربات<span class="brand">(کارگزاری مفید)</span>
-  </h1>
-  {# Purely decorative — pure SVG/CSS, no image or script dependency — so it
-     is hidden from screen readers rather than read aloud as stray shapes. #}
-  <div class="robot-badge" aria-hidden="true">
-    <svg viewBox="0 0 120 88" role="img" focusable="false">
-      <defs>
-        <linearGradient id="botBody" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#1a6b70"/>
-          <stop offset="100%" stop-color="#0b3b3e"/>
-        </linearGradient>
-      </defs>
-      <g class="bot-group">
-        <line x1="76" y1="9" x2="76" y2="15" stroke="#0e7490" stroke-width="2.2" stroke-linecap="round"/>
-        <circle class="antenna-tip" cx="76" cy="6" r="2.8" fill="#facc15"/>
-        <rect x="63" y="15" width="26" height="20" rx="7" fill="url(#botBody)"/>
-        <circle class="eye" cx="70" cy="25" r="2.6" fill="#5eead4"/>
-        <circle class="eye" cx="82" cy="25" r="2.6" fill="#5eead4"/>
-        <rect x="55" y="32" width="42" height="44" rx="13" fill="url(#botBody)"/>
-        <rect x="61" y="41" width="30" height="10" rx="5" fill="#0e7490" opacity="0.5"/>
-        <rect x="91" y="38" width="11" height="26" rx="5.5" fill="url(#botBody)"/>
-        <g class="wave-arm">
-          <line x1="55" y1="40" x2="33" y2="13" stroke="url(#botBody)" stroke-width="9" stroke-linecap="round"/>
-          <circle cx="33" cy="13" r="6.5" fill="url(#botBody)"/>
-        </g>
-      </g>
-    </svg>
   </div>
+  <h1>پنل ربات<span class="brand">(کارگزاری مفید)</span></h1>
 </div>
 
 {% if flash %}<div class="flash {{ 'error' if flash_error else '' }}">{{ flash }}</div>{% endif %}

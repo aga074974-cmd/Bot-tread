@@ -6,12 +6,15 @@
   h1 .brand { display: block; color: #facc15; font-size: 0.7rem; font-weight: normal; }
   .top { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
   .top a { color: #94a3b8; font-size: 0.85rem; text-decoration: none; white-space: nowrap; }
-  /* The login-session status light: a plain dot, not a badge, sitting inline
-     between the two words of the title itself. Its ring is the page's own
-     background color rather than a border, so it still looks round against
-     the dark page instead of squared off by a box model edge. */
-  .session-light { width: 12px; height: 12px; border-radius: 50%; border: none; padding: 0;
-                    cursor: pointer; flex-shrink: 0; vertical-align: middle; margin: 0 0.15rem;
+  /* The robot animation and the session light as one group, sitting together
+     on one side of the header — the light sits right after the animation
+     and right before the title text, not inside the title itself. */
+  .robot-and-light { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+  /* The login-session status light: a plain dot, not a badge. Its ring is
+     the page's own background color rather than a border, so it still looks
+     round against the dark page instead of squared off by a box model edge. */
+  .session-light { width: 16px; height: 16px; border-radius: 50%; border: none; padding: 0;
+                    cursor: pointer; flex-shrink: 0;
                     box-shadow: 0 0 0 2px #0f172a; }
   .session-light-valid { background: #22c55e; }
   .session-light-invalid { background: #ef4444; }
@@ -90,39 +93,20 @@
      the browser's default [hidden]{display:none} at equal specificity — so
      toggling the hidden attribute alone would not actually hide either one. */
   .gallery-grid[hidden], .gallery-full[hidden] { display: none; }
-  /* A small decorative badge next to the header title: a robot waving hello.
-     Pure inline SVG/CSS — no image file and no script, so there is nothing
-     here to load or fail. Sized generously and left unclipped (overflow:
-     visible throughout) so nothing, including the waving arm's swing, gets
-     cut off. */
-  .robot-badge { flex-shrink: 0; width: 120px; height: 88px; overflow: visible; }
+  /* A small decorative badge next to the header title: a robot waving hello,
+     then dropping through a trapdoor. Pure inline SVG/CSS (plus a couple of
+     SMIL animateTransform elements for the arms) — no image file and no
+     script, so there is nothing here to load or fail. The svg's own 680x430
+     viewBox is scaled down to fit the container; the container's aspect
+     ratio matches it so nothing is stretched or letterboxed. Left unclipped
+     (overflow: visible on the container) so nothing outside that viewBox
+     gets cut off — the svg's own internal clipPath still hides the robot
+     below the trapdoor, which is the point of it. */
+  .robot-badge { flex-shrink: 0; width: 140px; height: 88px; overflow: visible; }
   .robot-badge svg { width: 100%; height: 100%; overflow: visible; display: block; }
-  .robot-badge .bot-group { animation: bot-bob 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
-  .robot-badge .eye { transform-box: fill-box; transform-origin: 50% 50%; animation: eye-blink 4s ease-in-out infinite; }
-  .robot-badge .antenna-tip { transform-box: fill-box; transform-origin: 50% 50%; animation: tip-pulse 1.8s ease-in-out infinite; }
-  /* The waving arm pivots around the shoulder joint — an absolute point in
-     the svg's own coordinate space, not a percentage of the arm's own
-     (diagonal, off-center) bounding box, so the default view-box transform
-     origin is used here instead of the fill-box trick the other parts use. */
-  .robot-badge .wave-arm { transform-origin: 55px 40px; animation: wave 1.3s ease-in-out infinite; }
-  @keyframes bot-bob {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-1.5px); }
-  }
-  @keyframes eye-blink {
-    0%, 92%, 100% { transform: scaleY(1); }
-    95% { transform: scaleY(0.15); }
-  }
-  @keyframes tip-pulse {
-    0%, 100% { opacity: 0.7; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.25); }
-  }
-  @keyframes wave {
-    0%, 100% { transform: rotate(-15deg); }
-    50% { transform: rotate(35deg); }
-  }
   @media (prefers-reduced-motion: reduce) {
-    .robot-badge .bot-group, .robot-badge .eye, .robot-badge .antenna-tip,
-    .robot-badge .wave-arm { animation: none; }
+    .robot-badge .rf-fall, .robot-badge .rf-bob, .robot-badge .rf-eyes,
+    .robot-badge .rf-lookdown, .robot-badge .rf-arc, .robot-badge .rf-bubble,
+    .robot-badge .rf-doorL, .robot-badge .rf-doorR, .robot-badge .rf-hole { animation: none; }
   }
 </style>
