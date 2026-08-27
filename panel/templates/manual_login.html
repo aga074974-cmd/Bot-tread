@@ -7,12 +7,17 @@
 {% include "_style.html" %}
 <style>
   /* Specific to this page only, so _style.html stays generic. */
+  /* Shaped from the real virtual screen (see manual_login.SCREEN_*), so the
+     remote browser fills the frame instead of being letterboxed inside it. */
   .vnc-frame-wrap { background: #000; border-radius: 12px; overflow: hidden;
-                     aspect-ratio: 480 / 920; max-height: 70vh; margin: 0 auto; }
+                     aspect-ratio: {{ screen_width }} / {{ screen_height }};
+                     max-height: 78vh; margin: 0 auto; }
   .vnc-frame-wrap iframe { width: 100%; height: 100%; border: none; display: block; }
   .manual-login-actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
   .manual-login-actions button { flex: 1; }
   button.cancel-wide { background: #450a0a; color: #fca5a5; border: none; border-radius: 8px;
+                        padding: 0.8rem; font-weight: bold; font-size: 1rem; font-family: inherit; }
+  button.keyboard-wide { background: #1e3a8a; color: #bfdbfe; border: none; border-radius: 8px;
                         padding: 0.8rem; font-weight: bold; font-size: 1rem; font-family: inherit; }
 </style>
 </head>
@@ -38,10 +43,17 @@
     <button type="button" class="submit" id="manual-login-start-btn" onclick="startManualLogin()">
       شروع
     </button>
+    <button type="button" class="keyboard-wide" id="manual-login-keyboard-btn" onclick="showKeyboard()" hidden>
+      ⌨ کیبورد
+    </button>
     <button type="button" class="cancel-wide" id="manual-login-cancel-btn" onclick="cancelManualLogin()" hidden>
       لغو
     </button>
   </div>
+  <p class="empty" id="manual-login-keyboard-hint" hidden>
+    برای تایپ، اول روی کادر موردنظر داخل تصویر بزن، بعد دکمه‌ی «کیبورد» بالا را بزن
+    تا کیبورد گوشی‌ات باز شود.
+  </p>
 </div>
 
 <script>
@@ -72,18 +84,20 @@
     const running = data.state === 'starting' || data.state === 'waiting_for_login';
     document.getElementById('manual-login-frame-wrap').hidden = !running;
     document.getElementById('manual-login-cancel-btn').hidden = !running;
+    document.getElementById('manual-login-keyboard-btn').hidden = !running;
+    document.getElementById('manual-login-keyboard-hint').hidden = !running;
     document.getElementById('manual-login-start-btn').hidden = running;
 
     const frame = document.getElementById('manual-login-frame');
     if (running && !frame.src) {
-      // vnc.html (not vnc_lite.html) — it's the full noVNC UI, whose
-      // pull-out side toolbar has the on-screen-keyboard button a touch
-      // screen needs to type into the remote page at all (there's no
-      // physical keyboard here, and tapping a text field over VNC doesn't
-      // summon the phone's own keyboard on its own).
+      // vnc.html (not vnc_lite.html) — it's the full noVNC UI, the one that
+      // carries the hidden keyboard input showKeyboard() below reaches for.
+      // quality/compression trade a little sharpness for far fewer bytes per
+      // frame, which is what "smooth" means over a phone connection.
       frame.src = '/manual-login/novnc/vnc.html?path=' +
         encodeURIComponent('manual-login/vnc') +
-        '&autoconnect=true&resize=scale&reconnect=true&show_dot=true';
+        '&autoconnect=true&resize=scale&reconnect=true&show_dot=true' +
+        '&quality=5&compression=3';
     }
     if (!running) {
       frame.removeAttribute('src');
@@ -113,6 +127,41 @@
   async function cancelManualLogin() {
     const res = await fetch('/manual-login/cancel', { method: 'POST' });
     renderStatus(await res.json());
+  }
+
+  // A phone only raises its keyboard for a focused text field of its own —
+  // tapping a field drawn inside the VNC picture is, to the phone, a tap on
+  // an image. noVNC keeps a hidden textarea for exactly this, and its
+  // toolbar has a button that focuses it; that toolbar is a thin pull-out
+  // tab, which is hard to hit inside a small iframe, so this drives it from
+  // out here instead. The iframe is same-origin (the panel serves noVNC
+  // itself), so its document is reachable — and this runs inside the tap
+  // handler, which is what lets the focus actually raise the keyboard.
+  function showKeyboard() {
+    const frame = document.getElementById('manual-login-frame');
+    let doc = null;
+    try {
+      doc = frame.contentDocument;
+    } catch (err) {
+      doc = null;
+    }
+    if (!doc) return;
+
+    const input = doc.getElementById('noVNC_keyboardinput');
+    if (input) {
+      input.focus();
+      input.click();
+      return;
+    }
+    // Older/newer noVNC layouts: fall back to its own keyboard button, and
+    // failing that, to opening the toolbar so it can be tapped by hand.
+    const button = doc.getElementById('noVNC_keyboard_button');
+    if (button) {
+      button.click();
+      return;
+    }
+    const handle = doc.getElementById('noVNC_control_bar_handle');
+    if (handle) handle.click();
   }
 
   // Matches the panel's own spec for this page: it starts as soon as it opens.

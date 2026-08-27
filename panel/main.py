@@ -23,7 +23,7 @@ from bot.screenshots import BASE_DIR as SCREENSHOT_DIR, purge_old, run_dir
 from panel.db import OrderStore
 from panel.errors import to_persian
 from panel.jalali import PERSIAN_MONTHS, current_jalali_year, jalali_to_gregorian_str, to_jalali_str, today_jalali_ymd
-from panel.manual_login import ManualLoginSession
+from panel.manual_login import SCREEN_HEIGHT, SCREEN_WIDTH, ManualLoginSession
 from panel.session_state import SessionStateStore
 
 log = logging.getLogger(__name__)
@@ -372,7 +372,17 @@ async def session_manual_login(
 async def manual_login_page(request: Request):
     if not require_auth(request):
         return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(request, "manual_login.html", {})
+    # The viewer is shaped from the real virtual screen, so the remote
+    # browser lands in the frame at its own proportions — a hardcoded guess
+    # here would letterbox or squash it the moment that screen changes.
+    return templates.TemplateResponse(
+        request,
+        "manual_login.html",
+        {
+            "screen_width": SCREEN_WIDTH,
+            "screen_height": SCREEN_HEIGHT,
+        },
+    )
 
 
 @app.post("/manual-login/start")

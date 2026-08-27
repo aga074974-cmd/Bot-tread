@@ -39,11 +39,26 @@ log = logging.getLogger(__name__)
 # crashed-and-restarted panel can find (and clean up) a stale one by name.
 DISPLAY = ":77"
 VNC_PORT = 5977
-# Roughly a phone's aspect ratio. 16-bit colour (not 24) roughly halves what
-# x11vnc has to push over the websocket on every change, which matters more
-# than colour depth ever will for a login form on a mobile connection.
-SCREEN_WIDTH = 480
-SCREEN_HEIGHT = 920
+# The screen is sized around two measured facts about Chromium on a display
+# with no window manager, both of which cut the page off before:
+#
+#   * it refuses to make a window narrower than 500px, so a 480px-wide screen
+#     got a 500px window with 20px hanging off the right edge, and
+#   * its tab strip and address bar always cost CHROME_UI_HEIGHT of the
+#     window, whatever the window's size (--kiosk cannot reclaim them: with
+#     no window manager to ask, it is silently ignored).
+#
+# So the screen is the page area we actually want, plus that chrome, at a
+# width Chromium will agree to. 520px keeps the site firmly in its mobile
+# layout while clearing the 500px floor.
+PAGE_WIDTH = 520
+PAGE_HEIGHT = 920
+CHROME_UI_HEIGHT = 88  # measured; the page also loses a 1px window border
+SCREEN_WIDTH = PAGE_WIDTH
+SCREEN_HEIGHT = PAGE_HEIGHT + CHROME_UI_HEIGHT
+# 16-bit colour (not 24) roughly halves what x11vnc has to push over the
+# websocket on every change, which matters more than colour depth ever will
+# for a login form on a mobile connection.
 SCREEN_DEPTH = 16
 SCREEN_SIZE = f"{SCREEN_WIDTH}x{SCREEN_HEIGHT}x{SCREEN_DEPTH}"
 
@@ -138,25 +153,35 @@ class ManualLoginSession:
         self._browser = await self._playwright.chromium.launch(
             headless=False,
             env={**os.environ, "DISPLAY": self._display},
-            # There is no window manager on this Xvfb display, so a browser
-            # window opened at Chromium's own default size (much wider than
-            # our 480px-wide screen) simply gets clipped at the screen edge —
-            # that's the "the page doesn't fully show up" bug: most of the
-            # page was rendering off-screen, not missing. Pinning the window
-            # to exactly the Xvfb screen's size and 0,0 position fixes that.
             args=[
+                # No window manager runs on this display, so the window is
+                # placed and sized by these flags alone — and it is sized to
+                # the whole screen, since there is no way to reclaim the
+                # chrome (see the SCREEN_* notes above).
                 "--window-position=0,0",
                 f"--window-size={SCREEN_WIDTH},{SCREEN_HEIGHT}",
+                # This VPS has no GPU, so every pixel is drawn on the CPU.
+                # Pinning the scale factor to 1 keeps that count equal to the
+                # pixels actually on screen.
+                "--force-device-scale-factor=1",
                 "--disable-gpu",
                 "--disable-dev-shm-usage",
             ],
         )
-        # The exact same device profile the headless connector uses: a
-        # mismatch here means the site serves its desktop layout instead,
-        # which not only looks wrong on a phone's VNC view but would save a
-        # storage_state the mobile-only automated flow can't reuse.
+        # Deliberately *not* the full Pixel 5 profile the headless connector
+        # uses. That profile pins an emulated 393x851 viewport at a 2.75x
+        # scale factor, which Chromium renders at a fixed size no matter how
+        # big the window is — the page came out cropped inside the window,
+        # and every frame cost ~7.5x the rasterising work on a machine with
+        # no GPU to do it. Here a person needs to see and drive the whole
+        # page, so it gets the real window as its viewport instead. Only the
+        # user agent is carried over, and that is the part that matters: it
+        # is what makes the site serve its mobile layout, and what the saved
+        # session is issued against.
         device = self._playwright.devices["Pixel 5"]
-        self._context = await self._browser.new_context(**device)
+        self._context = await self._browser.new_context(
+            user_agent=device["user_agent"], no_viewport=True
+        )
         self._page = await self._context.new_page()
         await self._page.goto(mofid_playwright.LOGIN_URL)
 
@@ -207,9 +232,13 @@ class ManualLoginSession:
         # that: a second, VNC-level password would protect nothing a person
         # with shell access to this host couldn't already read directly out
         # of auth_state.json.
+        # -noxdamage is deliberately *not* passed: with the DAMAGE extension
+        # (which Xvfb does provide) x11vnc is told which rectangles actually
+        # changed instead of re-scanning the whole screen every pass, which is
+        # most of the difference between a sluggish and a usable feed.
         self._x11vnc = await asyncio.create_subprocess_exec(
             "x11vnc", "-display", self._display, "-localhost", "-nopw",
-            "-forever", "-shared", "-noxdamage", "-quiet",
+            "-forever", "-shared", "-quiet",
             "-wait", "10",  # poll every 10ms instead of the 20ms default
             "-rfbport", str(self._vnc_port),
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
