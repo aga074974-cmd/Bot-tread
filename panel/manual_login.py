@@ -27,6 +27,7 @@ import os
 from enum import Enum
 from pathlib import Path
 from typing import Awaitable, Callable
+from urllib.parse import urlparse
 
 from playwright.async_api import async_playwright
 
@@ -71,6 +72,15 @@ VNC_READY_TIMEOUT_SECONDS = 10.0
 # form is on screen. Saying which of the two it is beats a silent wait.
 LOADING_DETAIL = "در حال باز کردن صفحه‌ی ورود..."
 READY_DETAIL = "منتظر ورود دستی..."
+
+# How many consecutive polls must agree before a session is saved. See
+# _app_is_visible for why one is not enough.
+REQUIRED_CONFIRMATIONS = 2
+
+# The app's own host, as opposed to the OAuth host (login.emofid.com) it
+# redirects to and back from. Taken from the URL the browser is pointed at,
+# so the two cannot drift apart.
+APP_HOST = urlparse(mofid_playwright.LOGIN_URL).hostname
 
 
 class ManualLoginState(str, Enum):
@@ -305,13 +315,42 @@ class ManualLoginSession:
     # ------------------------------------------------------------------
 
     async def _poll_for_login(self) -> None:
+        confirmations = 0
         try:
             while True:
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
                 if self._detail == LOADING_DETAIL and self._nav_task is not None:
                     if self._nav_task.done():
                         self._detail = READY_DETAIL
-                if await self._app_is_visible():
+
+                if self._page is None or self._page.is_closed():
+                    # The browser itself is gone; nobody can log in now, and
+                    # unlike the races below this does not recover.
+                    self._state = ManualLoginState.ERROR
+                    self._detail = "مرورگر زنده بسته شد."
+                    log.warning("manual login: the live browser closed before login finished")
+                    await self._cleanup_resources()
+                    return
+
+                try:
+                    seen = await self._app_is_visible()
+                except Exception as exc:
+                    # This page navigates a lot — the app boots, bounces to
+                    # the OAuth host, comes back — and a question asked at the
+                    # wrong moment can raise. Playwright rides most of that
+                    # out on its own, but a session someone is part-way
+                    # through is far too expensive to end over a transient
+                    # read, so the poll skips a beat instead.
+                    log.debug("manual login: page busy while checking (%r)", exc)
+                    confirmations = 0
+                    continue
+
+                # Two in a row: the app shell can flash by mid-boot, and
+                # saving a session then would store one that was never
+                # logged in.
+                confirmations = confirmations + 1 if seen else 0
+                if confirmations >= REQUIRED_CONFIRMATIONS:
                     await self._on_login_detected()
                     return
         except asyncio.CancelledError:
@@ -323,15 +362,24 @@ class ManualLoginSession:
             await self._cleanup_resources()
 
     async def _app_is_visible(self) -> bool:
-        """Same signal MofidPlaywrightClient._app_markers() waits for in
-        login() — any one of the app's own bottom-nav hooks on screen."""
+        """Whether we are looking at the logged-in app.
+
+        Stricter than MofidPlaywrightClient.login()'s check, because this one
+        decides whether to save a session. Being *in the DOM* is not enough:
+        the app's own shell carries these hooks while it is still starting up
+        and on its way to the login page. So the marker has to actually be on
+        screen, and the page has to be the app itself rather than the OAuth
+        host it hands you off to.
+        """
         if self._page is None or self._page.is_closed():
+            return False
+        if urlparse(self._page.url).hostname != APP_HOST:
             return False
         first, *rest = mofid_playwright.APP_MARKERS
         locator = self._page.locator(first)
         for marker in rest:
             locator = locator.or_(self._page.locator(marker))
-        return await locator.first.count() > 0
+        return await locator.first.is_visible()
 
     async def _on_login_detected(self) -> None:
         # Not _cancel_poll_task() here: this coroutine *is* the poll task: it
