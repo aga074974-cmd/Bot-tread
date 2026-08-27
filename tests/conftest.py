@@ -9,6 +9,7 @@ import threading
 from pathlib import Path
 from urllib.parse import urlencode
 
+import anyio.from_thread
 import pytest
 
 from bot.broker import mofid_playwright
@@ -150,8 +151,37 @@ def panel_session_store(panel_main, tmp_path: Path, monkeypatch: pytest.MonkeyPa
     return store
 
 
+@pytest.fixture(autouse=True)
+def fast_manual_login_poll(monkeypatch: pytest.MonkeyPatch) -> None:
+    """manual_login.py's own version of fast_timeouts above — a real second
+    per poll would make every test in tests/test_manual_login.py and
+    tests/test_panel_manual_login.py needlessly slow."""
+    from panel import manual_login
+
+    monkeypatch.setattr(manual_login, "POLL_INTERVAL_SECONDS", 0.3)
+
+
 @pytest.fixture
-def panel_client(panel_main, panel_store, panel_session_store):
+def panel_manual_login_session(panel_main, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A ManualLoginSession of its own for each test — the real one in
+    panel/main.py is a module-level singleton, and reusing it across tests
+    would leak a running Xvfb/browser/x11vnc from one test into the next.
+    Wired to the app's own on_success hook, so a successful login here goes
+    through the exact same session_store update a real one would (and lands
+    in the already-isolated panel_session_store, since that hook reads
+    panel_main.session_store by name at call time)."""
+    from panel.manual_login import ManualLoginSession
+
+    session = ManualLoginSession(
+        storage_state_path=str(tmp_path / "auth_state.json"),
+        on_success=panel_main._on_manual_login_success,
+    )
+    monkeypatch.setattr(panel_main, "manual_login_session", session)
+    return session
+
+
+@pytest.fixture
+def panel_client(panel_main, panel_store, panel_session_store, panel_manual_login_session):
     """Signed in. Deliberately not used as a context manager: the panel's
     startup hook reschedules orders and starts a purge loop, and neither
     belongs in a route test."""
@@ -161,6 +191,45 @@ def panel_client(panel_main, panel_store, panel_session_store):
     response = client.post("/login", data={"password": PANEL_PASSWORD}, follow_redirects=False)
     assert response.status_code == 303
     return client
+
+
+@pytest.fixture
+def panel_client_one_loop(panel_client, panel_manual_login_session):
+    """panel_client, but every call reuses one pinned event loop instead of
+    TestClient's default of a fresh thread+loop per request (see Starlette's
+    TestClient._portal_factory). Ordinary request/response tests never
+    notice, but manual-login's start() creates a background asyncio.Task
+    tied to whichever loop handles that one request — a later call's own
+    fresh loop can neither observe nor await it, so the poll loop silently
+    freezes mid-sleep (a real login is never detected) and a later cancel()/
+    status() call that tries to await that orphaned task deadlocks forever.
+    One shared loop for the whole test matches production, where a single
+    uvicorn event loop runs for the app's entire lifetime.
+
+    Deliberately not `with TestClient(...) as client:` — that also drives
+    the app's startup lifespan (order rescheduling, purge loops), which
+    panel_client's own docstring explains is kept out of route tests.
+
+    Teardown drains panel_manual_login_session through this same portal —
+    a session left mid cleanup (e.g. a test that let a login succeed
+    naturally instead of cancelling) is still running on this pinned loop,
+    and closing the portal out from under it would orphan its Xvfb/x11vnc
+    exactly like an un-awaited poll task did before this fixture existed."""
+    with anyio.from_thread.start_blocking_portal() as portal:
+        panel_client.portal = portal
+        try:
+            yield panel_client
+        finally:
+            async def _drain_manual_login_session() -> None:
+                with contextlib.suppress(Exception):
+                    await panel_manual_login_session.cancel()
+                poll_task = panel_manual_login_session._poll_task
+                if poll_task is not None:
+                    with contextlib.suppress(Exception):
+                        await poll_task
+
+            portal.call(_drain_manual_login_session)
+            panel_client.portal = None
 
 
 def has_shot(directory: Path, label: str) -> bool:

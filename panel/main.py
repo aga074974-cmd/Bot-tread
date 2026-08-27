@@ -5,9 +5,10 @@ import logging
 import os
 import secrets
 from datetime import datetime
+from pathlib import Path
 
 from dotenv import find_dotenv
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Request, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -22,6 +23,7 @@ from bot.screenshots import BASE_DIR as SCREENSHOT_DIR, purge_old, run_dir
 from panel.db import OrderStore
 from panel.errors import to_persian
 from panel.jalali import PERSIAN_MONTHS, current_jalali_year, jalali_to_gregorian_str, to_jalali_str, today_jalali_ymd
+from panel.manual_login import ManualLoginSession
 from panel.session_state import SessionStateStore
 
 log = logging.getLogger(__name__)
@@ -42,6 +44,11 @@ ENV_PATH = find_dotenv() or ".env"
 # the automatic retry a little more room before it bothers a person.
 MANUAL_LOGIN_THRESHOLD = 3
 
+# Where `apt install novnc` puts the noVNC static web client — vnc_lite.html
+# and the JS/CSS it imports — that /manual-login/novnc/ serves, behind the
+# panel's own login, for the live-browser manual login page.
+NOVNC_DIR = Path(os.getenv("NOVNC_DIR", "/usr/share/novnc")).resolve()
+
 if not PANEL_PASSWORD:
     raise RuntimeError("PANEL_PASSWORD must be set in .env before starting the panel")
 
@@ -49,6 +56,16 @@ store = OrderStore(DB_PATH)
 session_store = SessionStateStore(DB_PATH)
 templates = Jinja2Templates(directory="panel/templates")
 running_tasks: dict[str, asyncio.Task] = {}
+
+
+async def _on_manual_login_success() -> None:
+    await session_store.record_login_success()
+
+
+manual_login_session = ManualLoginSession(
+    storage_state_path=settings.storage_state_path,
+    on_success=_on_manual_login_success,
+)
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax")
@@ -345,6 +362,71 @@ async def session_manual_login(
     else:
         request.session["flash"] = "ورود دستی موفق بود."
     return RedirectResponse("/", status_code=303)
+
+
+# --------------------------------------------------------------------------
+# manual login via a live, remotely-viewable browser (panel/manual_login.py)
+# --------------------------------------------------------------------------
+
+@app.get("/manual-login", response_class=HTMLResponse)
+async def manual_login_page(request: Request):
+    if not require_auth(request):
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(request, "manual_login.html", {})
+
+
+@app.post("/manual-login/start")
+async def manual_login_start(request: Request):
+    if not require_auth(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return JSONResponse(await manual_login_session.start())
+
+
+@app.get("/manual-login/status")
+async def manual_login_status(request: Request):
+    if not require_auth(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return JSONResponse(manual_login_session.status())
+
+
+@app.post("/manual-login/cancel")
+async def manual_login_cancel(request: Request):
+    if not require_auth(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return JSONResponse(await manual_login_session.cancel())
+
+
+def _resolve_novnc_file(path: str) -> Path | None:
+    """Same defensive shape as _is_known_file below: resolve the requested
+    path and refuse anything that escapes NOVNC_DIR (a `../../etc/passwd`
+    style request), rather than trusting the path as given."""
+    candidate = (NOVNC_DIR / path).resolve()
+    if candidate != NOVNC_DIR and NOVNC_DIR not in candidate.parents:
+        return None
+    return candidate if candidate.is_file() else None
+
+
+@app.get("/manual-login/novnc/{path:path}")
+async def manual_login_novnc_asset(request: Request, path: str):
+    if not require_auth(request):
+        return RedirectResponse("/login", status_code=303)
+    resolved = _resolve_novnc_file(path)
+    if resolved is None:
+        return HTMLResponse("یافت نشد", status_code=404)
+    return FileResponse(resolved)
+
+
+@app.websocket("/manual-login/vnc")
+async def manual_login_vnc(websocket: WebSocket):
+    # Checked before accept(): closing here (rather than accepting and then
+    # closing) makes an unauthenticated attempt fail the handshake itself —
+    # this is the one and only thing standing between the open internet and
+    # a live, logged-in-once-it-succeeds broker session.
+    if not websocket.session.get("authenticated"):
+        await websocket.close(code=1008)
+        return
+    await websocket.accept()
+    await manual_login_session.proxy_vnc(websocket)
 
 
 @app.post("/orders")

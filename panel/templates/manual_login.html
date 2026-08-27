@@ -1,0 +1,118 @@
+<!doctype html>
+<html dir="rtl" lang="fa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ورود دستی از راه دور</title>
+{% include "_style.html" %}
+<style>
+  /* Specific to this page only, so _style.html stays generic. */
+  .vnc-frame-wrap { background: #000; border-radius: 12px; overflow: hidden;
+                     aspect-ratio: 480 / 920; max-height: 70vh; margin: 0 auto; }
+  .vnc-frame-wrap iframe { width: 100%; height: 100%; border: none; display: block; }
+  .manual-login-actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
+  .manual-login-actions button { flex: 1; }
+  button.cancel-wide { background: #450a0a; color: #fca5a5; border: none; border-radius: 8px;
+                        padding: 0.8rem; font-weight: bold; font-size: 1rem; font-family: inherit; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>ورود دستی از راه دور</h1>
+  <a href="/">بازگشت به پنل</a>
+</div>
+
+<div class="card">
+  <p class="empty">
+    همینجا، توی همون مرورگری که ربات ازش استفاده می‌کنه، با انگشتت وارد شو.
+    به‌محض رسیدن به صفحه‌ی اصلی اپ، نشست خودکار ذخیره و همه‌چیز بسته می‌شه —
+    نیازی نیست منتظر بمونی.
+  </p>
+  <p>
+    وضعیت: <span id="manual-login-status" class="badge pending">شروع نشده</span>
+  </p>
+  <div id="manual-login-frame-wrap" class="vnc-frame-wrap" hidden>
+    <iframe id="manual-login-frame" title="مرورگر زنده" allow="clipboard-read; clipboard-write"></iframe>
+  </div>
+  <div class="manual-login-actions">
+    <button type="button" class="submit" id="manual-login-start-btn" onclick="startManualLogin()">
+      شروع
+    </button>
+    <button type="button" class="cancel-wide" id="manual-login-cancel-btn" onclick="cancelManualLogin()" hidden>
+      لغو
+    </button>
+  </div>
+</div>
+
+<script>
+  const STATE_FA = {
+    idle: 'شروع نشده',
+    starting: 'در حال راه‌اندازی مرورگر زنده...',
+    waiting_for_login: 'منتظر ورود دستی...',
+    success: 'ورود موفق بود',
+    error: 'خطا',
+    cancelled: 'لغو شد',
+  };
+  const STATE_BADGE_CLASS = {
+    idle: 'pending',
+    starting: 'skipped',
+    waiting_for_login: 'skipped',
+    success: 'sent',
+    error: 'failed',
+    cancelled: 'pending',
+  };
+
+  let pollTimer = null;
+
+  function renderStatus(data) {
+    const badge = document.getElementById('manual-login-status');
+    badge.className = 'badge ' + (STATE_BADGE_CLASS[data.state] || 'pending');
+    badge.textContent = data.detail || STATE_FA[data.state] || data.state;
+
+    const running = data.state === 'starting' || data.state === 'waiting_for_login';
+    document.getElementById('manual-login-frame-wrap').hidden = !running;
+    document.getElementById('manual-login-cancel-btn').hidden = !running;
+    document.getElementById('manual-login-start-btn').hidden = running;
+
+    const frame = document.getElementById('manual-login-frame');
+    if (running && !frame.src) {
+      const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      frame.src = '/manual-login/novnc/vnc_lite.html?path=' +
+        encodeURIComponent('manual-login/vnc') + '&scale=true&reconnect=true';
+    }
+    if (!running) {
+      frame.removeAttribute('src');
+    }
+
+    if (running) {
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(pollStatus, 2000);
+    }
+  }
+
+  async function pollStatus() {
+    try {
+      const res = await fetch('/manual-login/status');
+      renderStatus(await res.json());
+    } catch (err) {
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(pollStatus, 3000);
+    }
+  }
+
+  async function startManualLogin() {
+    const res = await fetch('/manual-login/start', { method: 'POST' });
+    renderStatus(await res.json());
+  }
+
+  async function cancelManualLogin() {
+    const res = await fetch('/manual-login/cancel', { method: 'POST' });
+    renderStatus(await res.json());
+  }
+
+  // Matches the panel's own spec for this page: it starts as soon as it opens.
+  startManualLogin();
+</script>
+
+</body>
+</html>
