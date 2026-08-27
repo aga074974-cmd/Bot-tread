@@ -66,6 +66,12 @@ POLL_INTERVAL_SECONDS = 2.0
 XVFB_READY_TIMEOUT_SECONDS = 10.0
 VNC_READY_TIMEOUT_SECONDS = 10.0
 
+# The broker's site is a heavy Angular app that then bounces through an OAuth
+# redirect, so on a small VPS it can be ten to twenty seconds before the login
+# form is on screen. Saying which of the two it is beats a silent wait.
+LOADING_DETAIL = "در حال باز کردن صفحه‌ی ورود..."
+READY_DETAIL = "منتظر ورود دستی..."
+
 
 class ManualLoginState(str, Enum):
     IDLE = "idle"
@@ -104,6 +110,7 @@ class ManualLoginSession:
         self._context = None
         self._page = None
         self._poll_task: asyncio.Task | None = None
+        self._nav_task: asyncio.Task | None = None
 
     def status(self) -> dict:
         return {"state": self._state.value, "detail": self._detail}
@@ -127,7 +134,7 @@ class ManualLoginSession:
             return self.status()
 
         self._state = ManualLoginState.WAITING_FOR_LOGIN
-        self._detail = "منتظر ورود دستی..."
+        self._detail = LOADING_DETAIL
         self._poll_task = asyncio.create_task(self._poll_for_login())
         return self.status()
 
@@ -166,6 +173,15 @@ class ManualLoginSession:
                 "--force-device-scale-factor=1",
                 "--disable-gpu",
                 "--disable-dev-shm-usage",
+                # Chromium offered to translate the (Persian) broker site,
+                # covering the top of the page with a language bar right as it
+                # finished loading. Running its UI in Persian means it no
+                # longer sees a foreign page to offer that for. (Not
+                # --disable-features=Translate: Playwright already passes a
+                # --disable-features list of its own, and a second one would
+                # replace it rather than add to it.)
+                "--lang=fa-IR",
+                "--disable-translate",
             ],
         )
         # Deliberately *not* the full Pixel 5 profile the headless connector
@@ -180,10 +196,32 @@ class ManualLoginSession:
         # session is issued against.
         device = self._playwright.devices["Pixel 5"]
         self._context = await self._browser.new_context(
-            user_agent=device["user_agent"], no_viewport=True
+            user_agent=device["user_agent"],
+            no_viewport=True,
+            # Matches --lang above, so the site is asked for Persian — the
+            # language the automated flow's selectors are written against.
+            locale="fa-IR",
         )
         self._page = await self._context.new_page()
-        await self._page.goto(mofid_playwright.LOGIN_URL)
+        # Deliberately not awaited. Loading this site takes ten to twenty
+        # seconds on this machine, and awaiting it here held up the reply to
+        # /manual-login/start — which is what the viewer waits for before it
+        # connects, so the whole panel sat frozen on a blank card for the
+        # entire load and only then showed a page mid-spin. Handing the caller
+        # back a live browser immediately means the person watches it load,
+        # which is the same wait but a legible one.
+        self._nav_task = asyncio.create_task(self._navigate())
+
+    async def _navigate(self) -> None:
+        try:
+            await self._page.goto(mofid_playwright.LOGIN_URL)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # Whatever went wrong is on screen in the VNC view (a Chromium
+            # error page), and the person can retry from there, so this does
+            # not fail the session.
+            log.warning("manual login: opening %s: %r", mofid_playwright.LOGIN_URL, exc)
 
     async def _start_xvfb(self) -> None:
         self._remove_stale_xvfb_lock(Path(f"/tmp/.X{self._display.lstrip(':')}-lock"))
@@ -236,10 +274,13 @@ class ManualLoginSession:
         # (which Xvfb does provide) x11vnc is told which rectangles actually
         # changed instead of re-scanning the whole screen every pass, which is
         # most of the difference between a sluggish and a usable feed.
+        # No -wait override either. Polling at 100Hz (the 10ms this used to
+        # ask for) buys nothing once XDAMAGE is telling x11vnc where to look,
+        # and it spends CPU that this machine needs for rendering the page —
+        # the thing that was actually slow.
         self._x11vnc = await asyncio.create_subprocess_exec(
             "x11vnc", "-display", self._display, "-localhost", "-nopw",
             "-forever", "-shared", "-quiet",
-            "-wait", "10",  # poll every 10ms instead of the 20ms default
             "-rfbport", str(self._vnc_port),
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
         )
@@ -267,6 +308,9 @@ class ManualLoginSession:
         try:
             while True:
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                if self._detail == LOADING_DETAIL and self._nav_task is not None:
+                    if self._nav_task.done():
+                        self._detail = READY_DETAIL
                 if await self._app_is_visible():
                     await self._on_login_detected()
                     return
@@ -321,6 +365,13 @@ class ManualLoginSession:
         """Everything except the poll task: safe to call from outside
         (start()'s pre-flight, cancel()) and from inside the poll task's own
         success/error path alike."""
+        # First, so a still-running goto() cannot be left holding a page that
+        # is about to be closed out from under it.
+        if self._nav_task is not None:
+            self._nav_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._nav_task
+            self._nav_task = None
         if self._context is not None:
             with contextlib.suppress(Exception):
                 await self._context.close()
