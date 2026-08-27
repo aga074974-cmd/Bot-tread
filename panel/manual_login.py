@@ -39,7 +39,13 @@ log = logging.getLogger(__name__)
 # crashed-and-restarted panel can find (and clean up) a stale one by name.
 DISPLAY = ":77"
 VNC_PORT = 5977
-SCREEN_SIZE = "480x920x24"  # roughly a phone's aspect ratio, scaled up
+# Roughly a phone's aspect ratio. 16-bit colour (not 24) roughly halves what
+# x11vnc has to push over the websocket on every change, which matters more
+# than colour depth ever will for a login form on a mobile connection.
+SCREEN_WIDTH = 480
+SCREEN_HEIGHT = 920
+SCREEN_DEPTH = 16
+SCREEN_SIZE = f"{SCREEN_WIDTH}x{SCREEN_HEIGHT}x{SCREEN_DEPTH}"
 
 POLL_INTERVAL_SECONDS = 2.0
 XVFB_READY_TIMEOUT_SECONDS = 10.0
@@ -132,6 +138,18 @@ class ManualLoginSession:
         self._browser = await self._playwright.chromium.launch(
             headless=False,
             env={**os.environ, "DISPLAY": self._display},
+            # There is no window manager on this Xvfb display, so a browser
+            # window opened at Chromium's own default size (much wider than
+            # our 480px-wide screen) simply gets clipped at the screen edge —
+            # that's the "the page doesn't fully show up" bug: most of the
+            # page was rendering off-screen, not missing. Pinning the window
+            # to exactly the Xvfb screen's size and 0,0 position fixes that.
+            args=[
+                "--window-position=0,0",
+                f"--window-size={SCREEN_WIDTH},{SCREEN_HEIGHT}",
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+            ],
         )
         # The exact same device profile the headless connector uses: a
         # mismatch here means the site serves its desktop layout instead,
@@ -192,6 +210,7 @@ class ManualLoginSession:
         self._x11vnc = await asyncio.create_subprocess_exec(
             "x11vnc", "-display", self._display, "-localhost", "-nopw",
             "-forever", "-shared", "-noxdamage", "-quiet",
+            "-wait", "10",  # poll every 10ms instead of the 20ms default
             "-rfbport", str(self._vnc_port),
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
         )

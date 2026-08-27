@@ -76,9 +76,14 @@
 
     const frame = document.getElementById('manual-login-frame');
     if (running && !frame.src) {
-      const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      frame.src = '/manual-login/novnc/vnc_lite.html?path=' +
-        encodeURIComponent('manual-login/vnc') + '&scale=true&reconnect=true';
+      // vnc.html (not vnc_lite.html) — it's the full noVNC UI, whose
+      // pull-out side toolbar has the on-screen-keyboard button a touch
+      // screen needs to type into the remote page at all (there's no
+      // physical keyboard here, and tapping a text field over VNC doesn't
+      // summon the phone's own keyboard on its own).
+      frame.src = '/manual-login/novnc/vnc.html?path=' +
+        encodeURIComponent('manual-login/vnc') +
+        '&autoconnect=true&resize=scale&reconnect=true&show_dot=true';
     }
     if (!running) {
       frame.removeAttribute('src');
