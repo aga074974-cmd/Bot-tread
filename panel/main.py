@@ -78,7 +78,10 @@ STATUS_FA = {
     "pending": "در انتظار",
     "sent": "ارسال شد",
     "failed": "ناموفق",
-    "skipped": "لغو / رد شده",
+    # Cancelling deletes the order outright now, so the only thing that still
+    # ends up here is the scheduler passing over one that was already too late
+    # to be the order that was asked for — never a cancellation.
+    "skipped": "اجرا نشد",
 }
 
 

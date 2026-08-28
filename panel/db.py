@@ -97,16 +97,18 @@ class OrderStore:
 
     def _cancel(self, order_id: str) -> bool:
         conn = self._connect()
-        cur = conn.execute(
-            "UPDATE orders SET status = 'skipped' WHERE id = ? AND status = 'pending'",
-            (order_id,),
-        )
+        cur = conn.execute("DELETE FROM orders WHERE id = ? AND status = 'pending'", (order_id,))
         conn.commit()
         changed = cur.rowcount > 0
         conn.close()
         return changed
 
     async def cancel(self, order_id: str) -> bool:
+        """Drop the order entirely. An order called off before it ran is not
+        something that happened, so it leaves no trace in the history — this
+        deletes rather than marking it, which is what used to leave a row
+        behind. Still only ever touches one that has not run: an order already
+        sent or failed keeps its record, and cancelling it is refused."""
         return await asyncio.to_thread(self._cancel, order_id)
 
     def _purge_old(self, retention_days: int) -> int:
