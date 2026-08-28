@@ -4,17 +4,28 @@
   body { font-family: Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 1rem; }
   h1 { font-size: 1.2rem; margin: 0; line-height: 1.5; }
   h1 .brand { display: block; color: #facc15; font-size: 0.7rem; font-weight: normal; }
-  .top { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+  /* Three columns rather than a flex row, because the session light has to
+     sit in the true middle of the header: the two 1fr columns are equal by
+     definition, so the middle one is centred no matter how much wider the
+     robot is than the title. A header with only two children (every page but
+     the dashboard) pins its last child to the third column, so those keep
+     the far-apart look they had. On a screen too narrow for the robot to fit
+     in a third of the width, the columns simply give way — the light drifts
+     off centre instead of anything overlapping or the page scrolling. */
+  .top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+  .top > :first-child { justify-self: start; }
+  .top > :last-child { grid-column: 3; justify-self: end; }
   .top a { color: #94a3b8; font-size: 0.85rem; text-decoration: none; white-space: nowrap; }
-  /* The robot animation and the session light as one group, sitting together
-     on one side of the header — the light sits right after the animation
-     and right before the title text, not inside the title itself. */
-  .robot-and-light { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
   /* The login-session status light: a plain dot, not a badge. Its ring is
      the page's own background color rather than a border, so it still looks
-     round against the dark page instead of squared off by a box model edge. */
+     round against the dark page instead of squared off by a box model edge.
+     It sits on its own in the middle of the header, between the robot and
+     the title. The auto margins are what centre it: they claim the header's
+     free space evenly on both sides, and — unlike absolute positioning —
+     they still take part in the layout, so a narrow phone squeezes the gaps
+     instead of letting the title and the robot slide over the dot. */
   .session-light { width: 16px; height: 16px; border-radius: 50%; border: none; padding: 0;
-                    cursor: pointer; flex-shrink: 0;
+                    cursor: pointer; justify-self: center;
                     box-shadow: 0 0 0 2px #0f172a; }
   .session-light-valid { background: #22c55e; }
   .session-light-invalid { background: #ef4444; }

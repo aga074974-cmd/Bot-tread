@@ -9,16 +9,15 @@
 <body>
 <div class="top">
   <h1>پنل ربات<span class="brand">(کارگزاری مفید)</span></h1>
+  <button type="button" id="session-light"
+          class="session-light {{ 'session-light-valid' if session_valid else 'session-light-invalid' }}"
+          onclick="checkSession()"
+          aria-label="وضعیت نشست ورود؛ برای بررسی دوباره ضربه بزنید"
+          title="{{ 'نشست فعال است' if session_valid else 'نشست نامعتبر است یا هنوز بررسی نشده' }}"></button>
   {# Purely decorative — pure SVG/CSS, no image or script dependency — so it
      is hidden from screen readers rather than read aloud as stray shapes. #}
-  <div class="robot-and-light">
-    <button type="button" id="session-light"
-            class="session-light {{ 'session-light-valid' if session_valid else 'session-light-invalid' }}"
-            onclick="checkSession()"
-            aria-label="وضعیت نشست ورود؛ برای بررسی دوباره ضربه بزنید"
-            title="{{ 'نشست فعال است' if session_valid else 'نشست نامعتبر است یا هنوز بررسی نشده' }}"></button>
-    <div class="robot-badge" aria-hidden="true">
-      <svg xmlns="http://www.w3.org/2000/svg" width="680" height="430" viewBox="0 0 680 430" role="img">
+  <div class="robot-badge" aria-hidden="true">
+    <svg xmlns="http://www.w3.org/2000/svg" width="680" height="430" viewBox="0 0 680 430" role="img">
       <title>ربات سلام می‌دهد و از دریچه می‌افتد</title>
       <defs>
       <clipPath id="rf-holeClip"><rect x="0" y="0" width="680" height="395"/></clipPath>
@@ -127,8 +126,7 @@
       <rect class="rf-doorL" x="268" y="310" width="72" height="16" rx="3" fill="#94a3b8" stroke="#64748b" stroke-width="2"/>
       <rect class="rf-doorR" x="340" y="310" width="72" height="16" rx="3" fill="#94a3b8" stroke="#64748b" stroke-width="2"/>
       </g>
-      </svg>
-    </div>
+    </svg>
   </div>
 </div>
 
