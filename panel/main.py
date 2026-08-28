@@ -554,8 +554,12 @@ async def screenshot_file(request: Request, run: str, name: str, download: int =
         return RedirectResponse("/", status_code=303)
 
     path = SCREENSHOT_DIR / run / name
+    # ?download=1 asks for the file itself rather than a view of it. The run is
+    # folded into the name because every run calls its shots the same thing,
+    # and a phone's downloads folder is one flat pile.
+    filename = f"{run}_{name}" if download else None
     if path.suffix == ".png":
-        return FileResponse(path, media_type="image/png")
+        return FileResponse(path, media_type="image/png", filename=filename)
 
     # A page dump is markup captured from the broker's site. Serve it as plain
     # text, never as text/html: rendering it here would run someone else's
@@ -564,7 +568,7 @@ async def screenshot_file(request: Request, run: str, name: str, download: int =
     return FileResponse(
         path,
         media_type="text/plain; charset=utf-8",
-        filename=f"{run}_{name}" if download else None,
+        filename=filename,
         headers={
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'none'; sandbox",

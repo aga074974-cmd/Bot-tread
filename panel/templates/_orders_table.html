@@ -54,6 +54,7 @@
   <div class="gallery-bar">
     <button type="button" id="gallery-back" onclick="showGalleryGrid()" hidden>→</button>
     <span class="title" id="gallery-title"></span>
+    <a class="bar-dl" id="gallery-download" title="دانلود" hidden>⬇</a>
     <button type="button" onclick="closeGallery()">✕</button>
   </div>
   <div class="gallery-grid" id="gallery-grid"></div>
@@ -87,9 +88,34 @@
     return `/screenshots/${encodeURIComponent(currentGallery.run)}/${encodeURIComponent(name)}`;
   }
 
+  // The same file, asked for as a file: the route answers ?download=1 with a
+  // Content-Disposition naming it, so the phone saves it instead of showing it.
+  function downloadLink(name) {
+    const a = document.createElement('a');
+    a.className = 'dl-badge';
+    a.href = fileUrl(name) + '?download=1';
+    a.download = name;
+    a.title = 'دانلود';
+    a.setAttribute('aria-label', `دانلود ${name}`);
+    a.textContent = '⬇';
+    return a;
+  }
+
+  // One grid cell: the thing itself, with its download corner on top.
+  function galleryTile(child, name) {
+    const tile = document.createElement('div');
+    tile.className = 'gallery-item';
+    tile.appendChild(child);
+    tile.appendChild(downloadLink(name));
+    return tile;
+  }
+
   function showGalleryGrid() {
     document.getElementById('gallery-full').hidden = true;
     document.getElementById('gallery-back').hidden = true;
+    // Nothing is open in grid view, so the bar has nothing to offer; every
+    // tile carries its own download instead.
+    document.getElementById('gallery-download').hidden = true;
     const title = document.getElementById('gallery-title');
     title.removeAttribute('dir');  // back to the page's own RTL for this Persian summary
     title.textContent =
@@ -108,7 +134,7 @@
       img.alt = shot;
       img.loading = 'lazy';
       img.onclick = () => showGalleryImage(shot);
-      grid.appendChild(img);
+      grid.appendChild(galleryTile(img, shot));
     }
     // Page dumps (page.html / keypad.html) are markup from the broker's own
     // site, served as plain text on purpose — opened in their own tab rather
@@ -122,7 +148,7 @@
       a.dir = 'ltr';
       a.title = page;
       a.textContent = '📄';
-      grid.appendChild(a);
+      grid.appendChild(galleryTile(a, page));
     }
   }
 
@@ -132,6 +158,12 @@
     const title = document.getElementById('gallery-title');
     title.setAttribute('dir', 'ltr');  // a filename, not Persian text
     title.textContent = name;
+    const download = document.getElementById('gallery-download');
+    download.hidden = false;
+    download.href = fileUrl(name) + '?download=1';
+    download.download = name;
+    download.setAttribute('aria-label', `دانلود ${name}`);
+
     const full = document.getElementById('gallery-full');
     full.hidden = false;
     full.querySelector('img').src = fileUrl(name);

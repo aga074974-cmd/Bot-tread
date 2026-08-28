@@ -121,6 +121,19 @@
                   gap: 0.5rem; padding: 1rem; align-content: start; }
   .gallery-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px;
                        border: 1px solid #334155; cursor: pointer; display: block; }
+  /* Each tile carries its own download corner, so saving a shot is one tap
+     from the grid rather than a trip through the fullscreen view. Sized for a
+     fingertip, and dark enough to stay legible over a pale screenshot. */
+  .gallery-item { position: relative; }
+  .dl-badge { position: absolute; inset-block-end: 5px; inset-inline-end: 5px;
+              width: 32px; height: 32px; border-radius: 9px; text-decoration: none;
+              background: rgba(2, 6, 23, 0.82); border: 1px solid #475569;
+              color: #e2e8f0; font-size: 0.95rem;
+              display: flex; align-items: center; justify-content: center; }
+  .dl-badge:active { background: #0f172a; border-color: #94a3b8; }
+  .gallery-bar a.bar-dl { color: #e2e8f0; font-size: 1.1rem; text-decoration: none;
+                           padding: 0.2rem 0.5rem; }
+  .gallery-bar a.bar-dl[hidden] { display: none; }
   .gallery-grid a.html-item { aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
                                background: #1e293b; border: 1px solid #334155; border-radius: 8px;
                                color: #94a3b8; font-size: 1.6rem; text-decoration: none; }
