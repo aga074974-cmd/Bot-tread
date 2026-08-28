@@ -37,6 +37,22 @@ ORDER_NOTICE = "app-notify .notify__item"
 # sentence ends in — never a letter or a digit.
 CLOSE_GLYPHS = "✕✖×✗⨯ \t\u200c"
 
+# Some symbols — leveraged fund units among them — will not trade until the
+# account holder has personally signed a risk acknowledgement. The app puts it
+# up as a bottom sheet with موافقت می‌نمایم / انصراف and refuses to go on
+# without an answer. Read off a captured page: one <ui-bottom-sheet>, its
+# panel carrying .show while it is up, and the wording in .modal-title.
+#
+# The bot never answers it. Signing a declaration that says the holder
+# understands the risk is the holder's to do, not a robot's, so this is only
+# ever recognised and reported.
+CONSENT_SHEET = "ui-bottom-sheet .bottom-sheet.show"
+CONSENT_TITLE = ".modal-title"
+# Matched on the two words that name the document rather than the whole
+# heading, which carries the fund's name and changes with it.
+CONSENT_WORDS = re.compile(r"اقرارنامه|بیانیه ریسک")
+CONSENT_MARK = "needs the fund's risk acknowledgement"
+
 # The bottom bar, by the app's own test hooks (see the data-cy note below).
 # Any one of them on screen means we are inside the app.
 NAVBAR_MARKET_WATCH = '[data-cy="main-navbar-market-watch"]'
@@ -310,6 +326,32 @@ class MofidPlaywrightClient(BrokerClient):
         except Exception as exc:
             log.warning("could not read the site's error banner: %s", exc)
             return ""
+
+    async def _consent_wanted(self) -> str:
+        """The risk acknowledgement's own heading if the app is asking for it,
+        "" otherwise. Nothing this bot does can answer it — see CONSENT_SHEET."""
+        assert self._page is not None
+        try:
+            sheet = self._page.locator(CONSENT_SHEET).first
+            if await sheet.count() == 0 or not await sheet.is_visible():
+                return ""
+            title = sheet.locator(CONSENT_TITLE).first
+            heading = " ".join((await title.inner_text()).split()) if await title.count() else ""
+            return heading if CONSENT_WORDS.search(heading) else ""
+        except Exception as exc:
+            log.warning("could not read the consent sheet: %s", exc)
+            return ""
+
+    async def _refuse_if_consent_wanted(self, when: str) -> None:
+        """Deliberately not phrased as "the site says": the panel hands that
+        wording straight to whoever is reading, and this sheet's heading is a
+        line of legal title, not something that tells them what to do."""
+        heading = await self._consent_wanted()
+        if not heading:
+            return
+        await self._capture_failure(f"consent_wanted_{when}")
+        await self._save_page_html()
+        raise OrderRefused(f"{CONSENT_MARK}: {heading}")
 
     async def _click_login_button(self) -> None:
         assert self._page is not None
@@ -643,6 +685,9 @@ class MofidPlaywrightClient(BrokerClient):
         side_button_text = BUY_BUTTON_TEXT if order.side == Side.BUY else SELL_BUTTON_TEXT
         await page.get_by_text(side_button_text, exact=True).first.click()
         await self._screenshot("ticket_opened")
+        # Up before anything is filled in, it covers the form: catch it here
+        # rather than let it surface as a keypad that would not open.
+        await self._refuse_if_consent_wanted("on_ticket")
         await self._check_ticket_symbol(order.symbol)
 
         await self._enter_number(QUANTITY_INPUT, order.quantity, "quantity")
@@ -693,8 +738,9 @@ class MofidPlaywrightClient(BrokerClient):
         # recognised", which is the opposite of what happened to the order.
         success = page.get_by_text(SUCCESS_TEXT).first
         notice = page.locator(ORDER_NOTICE).first
+        consent = page.locator(CONSENT_SHEET).first
         try:
-            await success.or_(notice).first.wait_for(
+            await success.or_(notice).or_(consent).first.wait_for(
                 state="visible", timeout=SUCCESS_TIMEOUT_MS
             )
         except PlaywrightTimeoutError as exc:
@@ -707,6 +753,10 @@ class MofidPlaywrightClient(BrokerClient):
                 "it may well have gone through. Read the site's real wording out of "
                 f"{PAGE_HTML_NAME} in that run's folder, then correct SUCCESS_TEXT"
             ) from exc
+
+        # Asked for in answer to the send click: the app is gating the order on
+        # a signature, so it did not go through.
+        await self._refuse_if_consent_wanted("on_submit")
 
         said = await self._site_error(ORDER_NOTICE)
         # A confirmation arrives through this same toast, in a different
