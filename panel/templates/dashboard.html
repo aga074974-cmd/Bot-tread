@@ -9,11 +9,14 @@
 <body>
 <div class="top">
   <h1>پنل ربات<span class="brand">(کارگزاری مفید)</span></h1>
-  <button type="button" id="session-light"
-          class="session-light {{ 'session-light-valid' if session_valid else 'session-light-invalid' }}"
-          onclick="checkSession()"
-          aria-label="وضعیت نشست ورود؛ برای بررسی دوباره ضربه بزنید"
-          title="{{ 'نشست فعال است' if session_valid else 'نشست نامعتبر است یا هنوز بررسی نشده' }}"></button>
+  <div class="session-group">
+    <button type="button" id="session-light"
+            class="session-light {{ 'session-light-valid' if session_valid else 'session-light-invalid' }}"
+            onclick="checkSession()"
+            aria-label="وضعیت نشست ورود؛ برای بررسی دوباره ضربه بزنید"
+            title="{{ 'نشست فعال است' if session_valid else 'نشست نامعتبر است یا هنوز بررسی نشده' }}"></button>
+    <a class="manual-login-link" href="/manual-login">ورود دستی</a>
+  </div>
   {# Purely decorative — pure SVG/CSS, no image or script dependency — so it
      is hidden from screen readers rather than read aloud as stray shapes. #}
   <div class="robot-badge" aria-hidden="true">
@@ -156,9 +159,19 @@
 
 <script>
   let sessionToastTimer;
-  function showSessionToast(text, isError) {
+  // offerManualLogin adds a way straight into the live-browser login, for the
+  // case the message is about a login that just failed. Built as elements
+  // rather than markup so the server's message stays plain text.
+  function showSessionToast(text, isError, offerManualLogin) {
     const toast = document.getElementById('session-toast');
     toast.textContent = text;
+    if (offerManualLogin) {
+      toast.appendChild(document.createElement('br'));
+      const link = document.createElement('a');
+      link.href = '/manual-login';
+      link.textContent = 'خودت دستی وارد شو ←';
+      toast.appendChild(link);
+    }
     toast.classList.toggle('error', !!isError);
     toast.hidden = false;
     clearTimeout(sessionToastTimer);
@@ -174,7 +187,9 @@
       const data = await res.json();
       light.className = 'session-light ' + (data.valid ? 'session-light-valid' : 'session-light-invalid');
       light.title = data.valid ? 'نشست فعال است' : 'نشست نامعتبر است';
-      showSessionToast(data.message, !data.valid);
+      // One failed login is enough to point at the manual way in — no reason
+      // to make anyone wait for the third before telling them.
+      showSessionToast(data.message, !data.valid, !data.valid);
       if (data.manual_login_required) {
         document.getElementById('manual-login').hidden = false;
       }
