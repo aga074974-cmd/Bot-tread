@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from dotenv import find_dotenv
@@ -70,10 +70,12 @@ manual_login_session = ManualLoginSession(
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax")
 
-# How far behind the current moment an order may be and still be accepted.
-# A minute, because the form is filled in at the minute it is submitted: an
-# order set for 21:30 and sent at 21:30:40 means now, not a minute ago.
-PAST_ORDER_TOLERANCE_SECONDS = 60
+# How far ahead an order has to be to be worth taking: the next minute, at
+# the earliest. Measured from the start of the current minute rather than
+# from this instant, because the form only offers whole minutes — at 21:30:40
+# someone choosing 21:31 has picked the minute after this one, and being told
+# that is too soon because it is only twenty seconds away would be nonsense.
+ORDER_MIN_LEAD = timedelta(minutes=1)
 
 # The dashboard is read on a phone: it shows the newest few orders and sends
 # the rest to /history, so the form stays reachable without scrolling.
@@ -506,12 +508,13 @@ async def create_order(
         request.session["flash_error"] = True
         return RedirectResponse("/", status_code=303)
 
-    # A time that has already gone by is refused here rather than accepted and
-    # then quietly passed over when it comes due. Comparing the whole moment,
-    # not just the clock, is what makes a date other than today fine on its
-    # own: tomorrow at 09:00 is ahead of now even though 09:00 is behind it.
-    late_by = (datetime.now(TEHRAN_TZ) - scheduled_at).total_seconds()
-    if late_by > PAST_ORDER_TOLERANCE_SECONDS:
+    # A time that has gone by, or is this same minute, is refused here rather
+    # than accepted and then quietly passed over when it comes due. Comparing
+    # the whole moment, not just the clock, is what makes a date other than
+    # today fine on its own: tomorrow at 09:00 is ahead of now even though
+    # 09:00 is behind it.
+    this_minute = datetime.now(TEHRAN_TZ).replace(second=0, microsecond=0)
+    if scheduled_at < this_minute + ORDER_MIN_LEAD:
         request.session["flash"] = "وقت سفارش گذشته — زمان دیگری انتخاب کنید."
         request.session["flash_error"] = True
         return RedirectResponse("/", status_code=303)
