@@ -32,8 +32,17 @@
      Centred on the light, it clears both the robot and the title. */
   .session-group { justify-self: center; position: relative; display: flex; align-items: center; }
   .top a.manual-login-link { position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-                        margin-top: 0.3rem; white-space: nowrap; color: #38bdf8;
-                        font-size: 0.8rem; text-decoration: underline; }
+                        margin-top: 0.35rem; display: inline-flex; align-items: center; gap: 0.3rem;
+                        white-space: nowrap; text-decoration: none; padding: 0.2rem 0.55rem;
+                        font-size: 0.72rem; font-weight: bold; color: #7dd3fc;
+                        background: rgba(56, 189, 248, 0.12);
+                        border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 999px;
+                        transition: background 0.15s ease, border-color 0.15s ease; }
+  /* Only the fill moves on a press — the transform is what centres this on
+     the light, so touching it here would shift the chip sideways. */
+  .top a.manual-login-link:active { background: rgba(56, 189, 248, 0.28);
+                                     border-color: rgba(56, 189, 248, 0.6); }
+  .manual-login-link svg { width: 11px; height: 11px; display: block; flex-shrink: 0; }
   .session-light { width: 26px; height: 26px; border-radius: 50%; border: none; padding: 0;
                     cursor: pointer; justify-self: center; position: relative;
                     box-shadow: 0 0 0 3px #0f172a; }
@@ -47,6 +56,7 @@
   @keyframes session-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
   @media (prefers-reduced-motion: reduce) {
     .session-light-checking { animation: none; opacity: 0.7; }
+    .top a.manual-login-link { transition: none; }
   }
   /* A second, independent toast — the orders table's #toast (below) does not
      exist in the DOM at all on a fresh panel with zero orders yet, and the

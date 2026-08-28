@@ -15,7 +15,10 @@
             onclick="checkSession()"
             aria-label="وضعیت نشست ورود؛ برای بررسی دوباره ضربه بزنید"
             title="{{ 'نشست فعال است' if session_valid else 'نشست نامعتبر است یا هنوز بررسی نشده' }}"></button>
-    <a class="manual-login-link" href="/manual-login">ورود دستی</a>
+    <a class="manual-login-link" href="/manual-login">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 2l10 5-4.2 1.4L7.4 12z"/></svg>
+      ورود دستی
+    </a>
   </div>
   {# Purely decorative — pure SVG/CSS, no image or script dependency — so it
      is hidden from screen readers rather than read aloud as stray shapes. #}
