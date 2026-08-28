@@ -139,6 +139,25 @@
     outline: none; border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18);
   }
+  /* The box the complaint is about. Not :invalid — an empty required field is
+     invalid from the moment the page loads, and outlining it in red before
+     anyone has touched it would be nagging, not helping. This is put on only
+     once the form has actually been sent. Its focus ring turns too, or the
+     panel's green one would be telling them it is fine. */
+  input.needs-attention { border-color: rgba(239, 68, 68, 0.55); }
+  input.needs-attention:focus { border-color: #f87171;
+                                box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18); }
+
+  /* A label that carries its field's complaint beside it. */
+  .label-row { display: flex; align-items: center; gap: 0.4rem; }
+  .field-warning { display: inline-flex; align-items: center; gap: 0.3rem;
+                   color: #fca5a5; font-size: 0.75rem; }
+  .field-warning[hidden] { display: none; }
+  .field-warning .mark { width: 16px; height: 16px; border-radius: 50%;
+                         border: 1px solid #fca5a5; flex-shrink: 0;
+                         display: inline-flex; align-items: center; justify-content: center;
+                         font-size: 0.72rem; font-weight: bold; line-height: 1; }
+
   .row { display: flex; gap: 0.55rem; }
   .row > div { flex: 1; min-width: 0; }
   .checkbox-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;

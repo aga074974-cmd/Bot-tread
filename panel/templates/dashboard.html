@@ -220,8 +220,15 @@
         </select>
       </div>
       <div>
-        <label>تعداد</label>
-        <input type="number" name="quantity" min="1" required value="{{ kept_quantity }}">
+        <label class="label-row" for="quantity-input">
+          تعداد
+          <span class="field-warning" id="quantity-warning" hidden>
+            <span class="mark" aria-hidden="true">!</span>
+            <span id="quantity-warning-text">تعداد را وارد کنید</span>
+          </span>
+        </label>
+        <input type="number" id="quantity-input" name="quantity" min="1" required
+               value="{{ kept_quantity }}">
       </div>
     </div>
 
@@ -256,6 +263,35 @@
     <button class="submit" type="submit">افزودن سفارش</button>
   </form>
 </div>
+
+<script>
+  // The browser already refuses to send the form without a quantity, but it
+  // says so in its own pop-up bubble — in the browser's language, pointing at
+  // a box that may be off screen. This says it in Persian, in place, next to
+  // the label. Suppressing the default only hides that bubble; the browser
+  // still blocks the submit, so nothing gets through unvalidated.
+  (function () {
+    const box = document.getElementById('quantity-input');
+    const warning = document.getElementById('quantity-warning');
+    const text = document.getElementById('quantity-warning-text');
+
+    box.addEventListener('invalid', (event) => {
+      event.preventDefault();
+      text.textContent = box.value.trim()
+        ? 'تعداد باید عددی بزرگ‌تر از صفر باشد'
+        : 'تعداد را وارد کنید';
+      warning.hidden = false;
+      box.classList.add('needs-attention');
+      box.focus();
+    });
+    // Goes away as soon as there is something to go on, rather than waiting
+    // for the next submit to tell them they fixed it.
+    box.addEventListener('input', () => {
+      warning.hidden = true;
+      box.classList.remove('needs-attention');
+    });
+  })();
+</script>
 
 <div class="card">
   <h2>سفارش‌ها</h2>
