@@ -4,21 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ورود - پنل سفارش‌ها</title>
+{% include "_style.html" %}
 <style>
-  body { font-family: Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-  form { background: #1e293b; padding: 2rem; border-radius: 12px; width: 90%; max-width: 320px; }
-  h1 { font-size: 1.1rem; margin-top: 0; }
-  input { width: 100%; box-sizing: border-box; padding: 0.7rem; margin: 0.5rem 0 1rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 1rem; }
-  button { width: 100%; padding: 0.7rem; border: none; border-radius: 8px; background: #22c55e; color: #06210f; font-weight: bold; font-size: 1rem; }
-  .error { color: #f87171; margin-bottom: 1rem; }
+  /* The shared sheet lays out a scrolling page of cards; this one page is a
+     single box in the middle of the screen, so only the framing differs. */
+  body { display: flex; align-items: center; justify-content: center;
+         min-height: 100svh; max-width: none; }
+  form.login { background: var(--surface); border: 1px solid var(--line-soft);
+               border-radius: var(--radius); box-shadow: var(--shadow);
+               padding: 1.6rem 1.4rem; width: 100%; max-width: 340px; }
+  form.login h1 { font-size: 1.05rem; margin-bottom: 1.1rem; }
+  form.login .lock { display: block; font-size: 1.6rem; margin-bottom: 0.4rem; }
 </style>
 </head>
 <body>
-<form method="post" action="/login">
+<form class="login" method="post" action="/login">
+  <span class="lock" aria-hidden="true">🔒</span>
   <h1>ورود به پنل ربات سفارش</h1>
-  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
   <input type="password" name="password" placeholder="رمز عبور پنل" autofocus required>
-  <button type="submit">ورود</button>
+  <button class="submit" type="submit">ورود</button>
 </form>
 </body>
 </html>
