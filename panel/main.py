@@ -406,6 +406,27 @@ async def manual_login_cancel(request: Request):
     return JSONResponse(await manual_login_session.cancel())
 
 
+# noVNC's own toolbar — the pull-out tab and the column of buttons behind it —
+# is dead weight on this page: the panel drives the one control that matters
+# (the keyboard) from its own button, and on a phone the bar covers a third of
+# the remote screen. The rule goes in as the page is served rather than being
+# injected once it has loaded, so the bar never flashes up first. It does not
+# take the phone keyboard with it: the hidden textarea that raises it lives in
+# #noVNC_container, not in the bar. Both ids have been stable since noVNC 1.3.
+NOVNC_HIDE_TOOLBAR = (
+    "<style>#noVNC_control_bar_anchor, #noVNC_hint_anchor "
+    "{ display: none !important; }</style>"
+)
+
+
+def _without_novnc_toolbar(markup: str) -> str:
+    if "</head>" in markup:
+        return markup.replace("</head>", NOVNC_HIDE_TOOLBAR + "</head>", 1)
+    # No head to put it in — a stylesheet is honoured anywhere in the document,
+    # so append rather than silently serve the page with its toolbar.
+    return markup + NOVNC_HIDE_TOOLBAR
+
+
 def _resolve_novnc_file(path: str) -> Path | None:
     """Same defensive shape as _is_known_file below: resolve the requested
     path and refuse anything that escapes NOVNC_DIR (a `../../etc/passwd`
@@ -423,6 +444,8 @@ async def manual_login_novnc_asset(request: Request, path: str):
     resolved = _resolve_novnc_file(path)
     if resolved is None:
         return HTMLResponse("یافت نشد", status_code=404)
+    if resolved.name == "vnc.html":
+        return HTMLResponse(_without_novnc_toolbar(resolved.read_text(encoding="utf-8")))
     return FileResponse(resolved)
 
 

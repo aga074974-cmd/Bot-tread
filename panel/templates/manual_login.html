@@ -92,6 +92,8 @@
     if (running && !frame.src) {
       // vnc.html (not vnc_lite.html) — it's the full noVNC UI, the one that
       // carries the hidden keyboard input showKeyboard() below reaches for.
+      // Its toolbar is stripped out as the panel serves it; the buttons on it
+      // were no use here and it covered a third of the screen on a phone.
       // quality/compression trade a little sharpness for far fewer bytes per
       // frame, which is what "smooth" means over a phone connection.
       frame.src = '/manual-login/novnc/vnc.html?path=' +
@@ -153,15 +155,11 @@
       input.click();
       return;
     }
-    // Older/newer noVNC layouts: fall back to its own keyboard button, and
-    // failing that, to opening the toolbar so it can be tapped by hand.
+    // Fallback for a noVNC that names its textarea differently: its own
+    // keyboard button still works when clicked from here, even though the
+    // toolbar it belongs to is hidden (see NOVNC_HIDE_TOOLBAR in main.py).
     const button = doc.getElementById('noVNC_keyboard_button');
-    if (button) {
-      button.click();
-      return;
-    }
-    const handle = doc.getElementById('noVNC_control_bar_handle');
-    if (handle) handle.click();
+    if (button) button.click();
   }
 
   // Matches the panel's own spec for this page: it starts as soon as it opens.
