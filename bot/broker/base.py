@@ -9,14 +9,25 @@ class BrokerError(Exception):
     """Raised when the broker rejects login or an order."""
 
 
-class OrderRefused(BrokerError):
+class FinalBrokerError(BrokerError):
+    """A failure there is no point trying again. The scheduler retries an
+    ordinary BrokerError, on the chance the next attempt catches a better
+    moment; these are settled — the next attempt would meet the same answer."""
+
+
+class OrderRefused(FinalBrokerError):
     """The broker read the order and turned it down in as many words — outside
     trading hours, not enough buying power. Its own message is the message.
 
-    Separate from BrokerError because the scheduler retries a failure, and this
-    is not a failure: it is an answer. Retrying it would re-send an order the
-    broker has already ruled on, which is pointless when the refusal is real
-    and dangerous if it ever is not."""
+    Final because it is not a failure but an answer. Retrying would re-send an
+    order the broker has already ruled on, which is pointless when the refusal
+    is real and dangerous if it ever is not."""
+
+
+class SymbolNotFound(FinalBrokerError):
+    """The symbol search came back with nothing, so there is no ticket to open
+    and nothing was ordered. Final because a name that does not exist will not
+    start existing on the second attempt."""
 
 
 class BrokerClient(ABC):

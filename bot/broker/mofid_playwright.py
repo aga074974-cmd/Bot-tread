@@ -10,7 +10,7 @@ from playwright.async_api import async_playwright, Browser, BrowserContext, Loca
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from bot.broker.base import BrokerClient, BrokerError, OrderRefused
+from bot.broker.base import BrokerClient, BrokerError, OrderRefused, SymbolNotFound
 from bot.models import Order, OrderType, Side
 
 log = logging.getLogger(__name__)
@@ -95,6 +95,16 @@ PAGE_HTML_NAME = "page.html"
 # placeholders — the same trap the login page sprang.)
 # ---------------------------------------------------------------------------
 SYMBOL_SEARCH_PLACEHOLDER = "جستجوی نماد"
+# Where the search puts what it found. Read off a captured search for a name
+# that does not exist: the list is there, its row wrapper holds nothing but
+# Angular's own placeholder comment, and no row is ever added. So "no rows in
+# here once the search has had its moment" is the app saying there is no such
+# symbol — there is no message on screen to read instead.
+SEARCH_RESULTS = '[data-cy="search-panel-result-list"]'
+SEARCH_RESULT_ROWS = f"{SEARCH_RESULTS} .cdk-virtual-scroll-content-wrapper > *"
+# Long enough for a slow answer on a slow VPS, short enough that a name with
+# no matches does not hold an order up for the best part of a minute.
+SEARCH_TIMEOUT_MS = 12_000
 BUY_BUTTON_TEXT = "خرید"
 SELL_BUTTON_TEXT = "فروش"
 
@@ -503,6 +513,23 @@ class MofidPlaywrightClient(BrokerClient):
             await self._save_page_html()
             raise BrokerError(f"unexpected error placing order: {exc!r}") from exc
 
+    async def _wait_for_search_results(self, symbol: str) -> None:
+        """Wait for the search to produce a row, and say plainly when it never
+        does. Left alone, the click below simply waits for text that is never
+        coming and fails on a timeout that names no cause — while the real
+        answer, that there is no such symbol, was on screen the whole time."""
+        assert self._page is not None
+        rows = self._page.locator(SEARCH_RESULT_ROWS)
+        try:
+            await rows.first.wait_for(state="attached", timeout=SEARCH_TIMEOUT_MS)
+        except PlaywrightTimeoutError as exc:
+            await self._capture_failure("symbol_not_found")
+            await self._save_page_html()
+            raise SymbolNotFound(
+                f"the search for {symbol!r} came back empty — no such symbol, "
+                "and nothing was ordered"
+            ) from exc
+
     async def _check_ticket_symbol(self, expected: str) -> None:
         """The ticket that opened has to be for the symbol we asked for. The
         search matches on part of a name, so it can land on a neighbour — and
@@ -679,6 +706,7 @@ class MofidPlaywrightClient(BrokerClient):
         await self._screenshot("landing")
         await page.locator(NAVBAR_SEARCH).first.click()
         await page.get_by_placeholder(SYMBOL_SEARCH_PLACEHOLDER).fill(order.symbol)
+        await self._wait_for_search_results(order.symbol)
         await self._screenshot("search")
         await page.get_by_text(order.symbol, exact=False).first.click()
 

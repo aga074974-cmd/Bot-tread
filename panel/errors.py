@@ -17,6 +17,10 @@ _SITE_SAYS = re.compile(r"the site says:\s*(.+?)(?:\.\s+Still at:|$)", re.S)
 # Matched in order, so put the specific messages above the general ones.
 _MESSAGES: list[tuple[str, str]] = [
     (
+        "came back empty — no such symbol",
+        "نمادی با این نام پیدا نشد — املای نماد را چک کن. هیچ سفارشی فرستاده نشد.",
+    ),
+    (
         "needs the fund's risk acknowledgement",
         "این نماد تا وقتی «اقرارنامه و بیانیه ریسک» را خودت تأیید نکنی معامله نمی‌شود؛ "
         "سفارش ثبت نشد. ربات این را امضا نمی‌کند — یک بار از «ورود دستی» وارد شو، "
