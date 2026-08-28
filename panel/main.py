@@ -396,7 +396,7 @@ async def manual_login_start(request: Request):
 async def manual_login_status(request: Request):
     if not require_auth(request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    return JSONResponse(manual_login_session.status())
+    return JSONResponse(manual_login_session.status_for_viewer())
 
 
 @app.post("/manual-login/cancel")

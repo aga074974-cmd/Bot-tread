@@ -15,8 +15,6 @@
   .vnc-frame-wrap iframe { width: 100%; height: 100%; border: none; display: block; }
   .manual-login-actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
   .manual-login-actions button { flex: 1; }
-  button.cancel-wide { background: #450a0a; color: #fca5a5; border: none; border-radius: 8px;
-                        padding: 0.8rem; font-weight: bold; font-size: 1rem; font-family: inherit; }
   button.keyboard-wide { background: #1e3a8a; color: #bfdbfe; border: none; border-radius: 8px;
                         padding: 0.8rem; font-weight: bold; font-size: 1rem; font-family: inherit; }
 </style>
@@ -31,7 +29,8 @@
   <p class="empty">
     همینجا، توی همون مرورگری که ربات ازش استفاده می‌کنه، با انگشتت وارد شو.
     به‌محض رسیدن به صفحه‌ی اصلی اپ، نشست خودکار ذخیره و همه‌چیز بسته می‌شه —
-    نیازی نیست منتظر بمونی.
+    نیازی نیست منتظر بمونی. اگه هم از این صفحه بیرون بری، مرورگر زنده خودش
+    بسته می‌شه.
   </p>
   <p>
     وضعیت: <span id="manual-login-status" class="badge pending">شروع نشده</span>
@@ -45,9 +44,6 @@
     </button>
     <button type="button" class="keyboard-wide" id="manual-login-keyboard-btn" onclick="showKeyboard()" hidden>
       ⌨ کیبورد
-    </button>
-    <button type="button" class="cancel-wide" id="manual-login-cancel-btn" onclick="cancelManualLogin()" hidden>
-      لغو
     </button>
   </div>
   <p class="empty" id="manual-login-keyboard-hint" hidden>
@@ -75,6 +71,7 @@
   };
 
   let pollTimer = null;
+  let isRunning = false;
 
   function renderStatus(data) {
     const badge = document.getElementById('manual-login-status');
@@ -82,8 +79,8 @@
     badge.textContent = data.detail || STATE_FA[data.state] || data.state;
 
     const running = data.state === 'starting' || data.state === 'waiting_for_login';
+    isRunning = running;
     document.getElementById('manual-login-frame-wrap').hidden = !running;
-    document.getElementById('manual-login-cancel-btn').hidden = !running;
     document.getElementById('manual-login-keyboard-btn').hidden = !running;
     document.getElementById('manual-login-keyboard-hint').hidden = !running;
     document.getElementById('manual-login-start-btn').hidden = running;
@@ -126,10 +123,21 @@
     renderStatus(await res.json());
   }
 
-  async function cancelManualLogin() {
-    const res = await fetch('/manual-login/cancel', { method: 'POST' });
-    renderStatus(await res.json());
-  }
+  // Leaving this page closes the live browser — there is no cancel button to
+  // press any more, and a Chromium with its own X server is not something to
+  // leave running on this machine by accident. sendBeacon rather than fetch:
+  // the page is on its way out, and this is the one kind of request a browser
+  // promises to still deliver from there.
+  //
+  // Deliberately not on visibilitychange. Switching apps hides the page too,
+  // and doing this login is exactly when someone leaves to fetch a one-time
+  // code out of an SMS; they must come back to a session still waiting for
+  // them. A phone that is closed or killed outright never gets here at all,
+  // so the server closes an unwatched session on its own as a backstop.
+  window.addEventListener('pagehide', () => {
+    if (!isRunning) return;
+    navigator.sendBeacon('/manual-login/cancel');
+  });
 
   // A phone only raises its keyboard for a focused text field of its own —
   // tapping a field drawn inside the VNC picture is, to the phone, a tap on

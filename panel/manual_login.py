@@ -24,6 +24,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import time
 from enum import Enum
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -77,6 +78,14 @@ READY_DETAIL = "منتظر ورود دستی..."
 # _app_is_visible for why one is not enough.
 REQUIRED_CONFIRMATIONS = 2
 
+# How long a live session may go unwatched before it closes itself. The viewer
+# polls /manual-login/status every couple of seconds, so silence means nobody
+# is looking any more — the page was closed, the phone lost signal, the tab
+# was killed. Generous on purpose: a backgrounded phone browser throttles its
+# timers to about one poll a minute, and someone stepping away to fetch a
+# one-time code out of an SMS must not come back to a dead session.
+ABANDONED_AFTER_SECONDS = 180.0
+
 # The app's own host, as opposed to the OAuth host (login.emofid.com) it
 # redirects to and back from. Taken from the URL the browser is pointed at,
 # so the two cannot drift apart.
@@ -121,9 +130,17 @@ class ManualLoginSession:
         self._page = None
         self._poll_task: asyncio.Task | None = None
         self._nav_task: asyncio.Task | None = None
+        self._last_seen = 0.0
 
     def status(self) -> dict:
         return {"state": self._state.value, "detail": self._detail}
+
+    def status_for_viewer(self) -> dict:
+        """Same status, but asking counts as being watched. The viewer polls
+        this while the page is open, so the last call is how _poll_for_login
+        tells a live session from an abandoned one."""
+        self._last_seen = time.monotonic()
+        return self.status()
 
     async def start(self) -> dict:
         async with self._lock:
@@ -145,6 +162,7 @@ class ManualLoginSession:
 
         self._state = ManualLoginState.WAITING_FOR_LOGIN
         self._detail = LOADING_DETAIL
+        self._last_seen = time.monotonic()
         self._poll_task = asyncio.create_task(self._poll_for_login())
         return self.status()
 
@@ -323,6 +341,17 @@ class ManualLoginSession:
                 if self._detail == LOADING_DETAIL and self._nav_task is not None:
                     if self._nav_task.done():
                         self._detail = READY_DETAIL
+
+                unwatched = time.monotonic() - self._last_seen
+                if unwatched > ABANDONED_AFTER_SECONDS:
+                    # Nobody has asked for the status in minutes, so there is
+                    # nobody left to finish this login. Chromium, Xvfb and
+                    # x11vnc are not cheap on this machine to leave running.
+                    self._state = ManualLoginState.CANCELLED
+                    self._detail = "چون کسی صفحه را باز نگه نداشت، بسته شد."
+                    log.info("manual login: unwatched for %.0fs, closing", unwatched)
+                    await self._cleanup_resources()
+                    return
 
                 if self._page is None or self._page.is_closed():
                     # The browser itself is gone; nobody can log in now, and
