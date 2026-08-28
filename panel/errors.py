@@ -17,6 +17,11 @@ _SITE_SAYS = re.compile(r"the site says:\s*(.+?)(?:\.\s+Still at:|$)", re.S)
 # Matched in order, so put the specific messages above the general ones.
 _MESSAGES: list[tuple[str, str]] = [
     (
+        "the broker site is unavailable",
+        "سایت کارگزاری مفید در دسترس نیست — سرور خودشان جواب نمی‌دهد، نه ربات. "
+        "کمی بعد دوباره امتحان کنید.",
+    ),
+    (
         "page never showed either the login form or the app",
         "صفحه‌ی کارگزاری بالا نیامد — اینترنت سرور یا خود سایت مفید را بررسی کنید.",
     ),

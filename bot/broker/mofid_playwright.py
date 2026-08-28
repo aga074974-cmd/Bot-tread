@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Locator, Page
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from bot.broker.base import BrokerClient, BrokerError
@@ -23,6 +24,9 @@ USERNAME_INPUT = "#user-name"
 PASSWORD_INPUT = "#password"
 LOGIN_SUBMIT = "button[type='submit']"
 LOGIN_ERROR = "#alert-item"  # the site's own banner, e.g. a wrong password
+# The order ticket puts its refusals in that same banner — the red pill
+# with the cross, reading e.g. "محدوده زمانی سفارش معتبر نمی‌باشد!".
+ORDER_ERROR = LOGIN_ERROR
 
 # The bottom bar, by the app's own test hooks (see the data-cy note below).
 # Any one of them on screen means we are inside the app.
@@ -46,6 +50,12 @@ SUCCESS_TIMEOUT_MS = 15_000
 # reaction is on record whichever of the two it shows up in.
 SUBMIT_MIDPOINT_MS = 500
 SUBMIT_SETTLE_MS = 1_000
+
+# Said when the broker's own servers are the problem — nginx answering with a
+# 5xx page instead of the app. Named rather than left to time out, because
+# "the page never showed the login form" sends someone hunting for a selector
+# that changed when nothing changed: the site is simply down.
+SITE_DOWN = "the broker site is unavailable"
 
 # Where a failed run dumps the page's markup, next to that run's screenshots.
 PAGE_HTML_NAME = "page.html"
@@ -312,6 +322,22 @@ class MofidPlaywrightClient(BrokerClient):
         except Exception:
             log.exception("on_login_result callback raised, ignoring")
 
+    async def _goto_app(self) -> None:
+        """Load the site, and say plainly when the site itself is down. Left to
+        the wait below, a 5xx page from nginx times out like everything else
+        and gets reported as the app not appearing, which reads as a broken
+        selector and sends someone looking for a change that never happened."""
+        assert self._page is not None
+        try:
+            response = await self._page.goto(LOGIN_URL)
+        except PlaywrightError as exc:
+            # Never reached the server at all: DNS, refused connection, the
+            # server's own network. Same conclusion from where we stand.
+            raise BrokerError(f"{SITE_DOWN} — {LOGIN_URL} did not answer ({exc})") from exc
+        if response is not None and response.status >= 500:
+            await self._capture_failure("site_unavailable")
+            raise BrokerError(f"{SITE_DOWN} — {LOGIN_URL} answered {response.status}")
+
     async def _open_session(self) -> Locator:
         """Launch a browser, load the saved session if any, and wait for the
         page to settle into one of two states: the login form, or the app
@@ -331,7 +357,7 @@ class MofidPlaywrightClient(BrokerClient):
             storage_state=self._load_storage_state(), **device
         )
         self._page = await self._context.new_page()
-        await self._page.goto(LOGIN_URL)
+        await self._goto_app()
 
         password_field = self._page.locator(PASSWORD_INPUT)
         app_markers = self._app_markers()
@@ -647,18 +673,37 @@ class MofidPlaywrightClient(BrokerClient):
         await page.wait_for_timeout(SUBMIT_SETTLE_MS - SUBMIT_MIDPOINT_MS)
         await self._screenshot("after_submit_1s")
 
+        # A sent order comes back one of two ways: the success message, or the
+        # app's own red banner naming the reason it was refused — outside
+        # trading hours, not enough buying power. Wait for whichever arrives
+        # first. Waiting only on success meant a refusal sat out the whole
+        # timeout and was then reported as "sent, but the reply was not
+        # recognised", which is the opposite of what happened to the order.
+        success = page.get_by_text(SUCCESS_TEXT).first
+        refusal = page.locator(ORDER_ERROR).first
         try:
-            await page.get_by_text(SUCCESS_TEXT).first.wait_for(timeout=SUCCESS_TIMEOUT_MS)
+            await success.or_(refusal).first.wait_for(
+                state="visible", timeout=SUCCESS_TIMEOUT_MS
+            )
         except PlaywrightTimeoutError as exc:
-            # Nothing here says the order failed — only that we did not
-            # recognise the reply. SUCCESS_TEXT is still a guess, so keep the
-            # markup: it carries the wording the site actually uses.
+            # Neither one showed. Nothing here says the order failed — only
+            # that we did not recognise the reply. SUCCESS_TEXT is still a
+            # guess, so keep the markup: it carries the site's real wording.
             await self._save_page_html()
             raise BrokerError(
                 f"order was sent, but no message matching {SUCCESS_TEXT!r} appeared — "
                 "it may well have gone through. Read the site's real wording out of "
                 f"{PAGE_HTML_NAME} in that run's folder, then correct SUCCESS_TEXT"
             ) from exc
+
+        said = await self._site_error()
+        # The same banner is where a success message would appear too, in a
+        # different colour — so a banner that carries SUCCESS_TEXT is not a
+        # refusal, whichever of the two locators woke the wait above.
+        if said and SUCCESS_TEXT not in said:
+            await self._capture_failure("order_refused")
+            await self._save_page_html()
+            raise BrokerError(f"the order was refused — the site says: {said}")
 
         return f"submitted-{order.id}"
 
