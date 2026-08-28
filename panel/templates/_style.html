@@ -24,9 +24,13 @@
      free space evenly on both sides, and — unlike absolute positioning —
      they still take part in the layout, so a narrow phone squeezes the gaps
      instead of letting the title and the robot slide over the dot. */
-  .session-light { width: 16px; height: 16px; border-radius: 50%; border: none; padding: 0;
-                    cursor: pointer; justify-self: center;
-                    box-shadow: 0 0 0 2px #0f172a; }
+  .session-light { width: 26px; height: 26px; border-radius: 50%; border: none; padding: 0;
+                    cursor: pointer; justify-self: center; position: relative;
+                    box-shadow: 0 0 0 3px #0f172a; }
+  /* The dot is a button you tap to re-check the session, and a 26px target is
+     a thin one for a finger. This pad widens what counts as a tap to 44px
+     without drawing anything, so the dot stays the size it looks. */
+  .session-light::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; }
   .session-light-valid { background: #22c55e; }
   .session-light-invalid { background: #ef4444; }
   .session-light-checking { background: #eab308; animation: session-blink 0.8s ease-in-out infinite; }
