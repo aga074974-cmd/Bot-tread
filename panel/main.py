@@ -190,6 +190,13 @@ def _order_rows(rows) -> list[dict]:
     return orders
 
 
+def _completed(rows) -> list:
+    """Orders that have already happened, one way or another. A pending order
+    has not happened yet: it belongs on the dashboard, where it can still be
+    cancelled, and nowhere else."""
+    return [r for r in rows if r["status"] != "pending"]
+
+
 def _dashboard_split(rows) -> tuple[list, int]:
     """Pending orders stay on the dashboard no matter how many there are or
     how old they are — cancelling one is only possible from there. Completed
@@ -197,7 +204,7 @@ def _dashboard_split(rows) -> tuple[list, int]:
     what /history is for. The combined list is re-sorted so it still reads as
     one chronological table rather than two stacked groups."""
     pending = [r for r in rows if r["status"] == "pending"]
-    completed = [r for r in rows if r["status"] != "pending"]
+    completed = _completed(rows)
     shown = sorted(pending + completed[:DASHBOARD_ORDERS], key=lambda r: r["scheduled_at"], reverse=True)
     return shown, max(0, len(completed) - DASHBOARD_ORDERS)
 
@@ -515,8 +522,16 @@ async def cancel_order(request: Request, order_id: str):
 async def history(request: Request):
     if not require_auth(request):
         return RedirectResponse("/login", status_code=303)
+    # Completed only. A pending order showing up here read as a second copy of
+    # what the dashboard is already showing, and the count on the dashboard's
+    # own link to this page never counted them either.
     return templates.TemplateResponse(
-        request, "history.html", {"orders": _order_rows(await store.list_all())}
+        request,
+        "history.html",
+        {
+            "orders": _order_rows(_completed(await store.list_all())),
+            "empty_text": "هنوز سفارشی انجام نشده — سفارش‌های در انتظار در صفحه‌ی اصلی هستند.",
+        },
     )
 
 

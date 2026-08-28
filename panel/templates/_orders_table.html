@@ -172,5 +172,5 @@
   }
 </script>
 {% else %}
-<div class="empty">هنوز سفارشی ثبت نشده.</div>
+<div class="empty">{{ empty_text | default('هنوز سفارشی ثبت نشده.') }}</div>
 {% endif %}
