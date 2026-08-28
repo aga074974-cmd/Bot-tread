@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
-from bot.broker.base import BrokerClient
+from bot.broker.base import BrokerClient, OrderRefused
 from bot.models import Order, OrderStatus
 
 log = logging.getLogger(__name__)
@@ -86,6 +86,16 @@ async def run_order(
             # retry/fail/notify instead of silently killing this task (which
             # would leave the order stuck at "pending" forever).
             log.error("order %s attempt %s/%s failed: %r", order.id, attempt, max_retries, exc, exc_info=True)
+
+            if isinstance(exc, OrderRefused):
+                # The broker answered. Sending it again would either be
+                # refused again for the same reason, or — if we misread a
+                # reply that was not a refusal — place the order twice.
+                order.status = OrderStatus.FAILED
+                order.error = str(exc) or repr(exc)
+                log.error("order %s (%s) was refused by the broker: %s", order.id, order.symbol, exc)
+                await _notify(on_status_change, order)
+                return
 
             late_by = (datetime.now(timezone.utc) - order.scheduled_at).total_seconds()
             if datetime.now(timezone.utc) >= deadline:

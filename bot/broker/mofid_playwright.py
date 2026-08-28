@@ -10,7 +10,7 @@ from playwright.async_api import async_playwright, Browser, BrowserContext, Loca
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from bot.broker.base import BrokerClient, BrokerError
+from bot.broker.base import BrokerClient, BrokerError, OrderRefused
 from bot.models import Order, OrderType, Side
 
 log = logging.getLogger(__name__)
@@ -24,9 +24,18 @@ USERNAME_INPUT = "#user-name"
 PASSWORD_INPUT = "#password"
 LOGIN_SUBMIT = "button[type='submit']"
 LOGIN_ERROR = "#alert-item"  # the site's own banner, e.g. a wrong password
-# The order ticket puts its refusals in that same banner — the red pill
-# with the cross, reading e.g. "محدوده زمانی سفارش معتبر نمی‌باشد!".
-ORDER_ERROR = LOGIN_ERROR
+
+# Inside the app the messages come from a different place: an <app-notify>
+# host holding one .notify__item per message — the rose pill with the cross
+# reading e.g. "محدوده زمانی سفارش معتبر نمی‌باشد!". Read off a captured order
+# page, which carries the host and the CSS but no live item: these are toasts,
+# gone again in a few seconds, which is why the page dump taken fifteen
+# seconds after a refusal has no trace of the refusal in it.
+ORDER_NOTICE = "app-notify .notify__item"
+# Trimmed off the end of a message: the toast's own dismiss control, for
+# the case it is a character and not an icon. Only shapes no Persian
+# sentence ends in — never a letter or a digit.
+CLOSE_GLYPHS = "✕✖×✗⨯ \t\u200c"
 
 # The bottom bar, by the app's own test hooks (see the data-cy note below).
 # Any one of them on screen means we are inside the app.
@@ -285,16 +294,19 @@ class MofidPlaywrightClient(BrokerClient):
             locator = locator.or_(self._page.locator(marker))
         return locator
 
-    async def _site_error(self) -> str:
+    async def _site_error(self, selector: str = LOGIN_ERROR) -> str:
         """The message the site itself put on screen, if any. It names the real
         problem — wrong password, locked account — instead of leaving us to
         guess from a timeout. A hidden banner reads as empty, as it should."""
         assert self._page is not None
         try:
-            banner = self._page.locator(LOGIN_ERROR).first
+            banner = self._page.locator(selector).first
             if await banner.count() == 0:
                 return ""
-            return (await banner.inner_text()).strip()
+            # The toast reads as one line here even though it is laid out over
+            # several, and its close control comes along as a stray glyph when
+            # the app draws it as a character rather than an icon.
+            return " ".join((await banner.inner_text()).split()).strip(CLOSE_GLYPHS).strip()
         except Exception as exc:
             log.warning("could not read the site's error banner: %s", exc)
             return ""
@@ -680,9 +692,9 @@ class MofidPlaywrightClient(BrokerClient):
         # timeout and was then reported as "sent, but the reply was not
         # recognised", which is the opposite of what happened to the order.
         success = page.get_by_text(SUCCESS_TEXT).first
-        refusal = page.locator(ORDER_ERROR).first
+        notice = page.locator(ORDER_NOTICE).first
         try:
-            await success.or_(refusal).first.wait_for(
+            await success.or_(notice).first.wait_for(
                 state="visible", timeout=SUCCESS_TIMEOUT_MS
             )
         except PlaywrightTimeoutError as exc:
@@ -696,14 +708,17 @@ class MofidPlaywrightClient(BrokerClient):
                 f"{PAGE_HTML_NAME} in that run's folder, then correct SUCCESS_TEXT"
             ) from exc
 
-        said = await self._site_error()
-        # The same banner is where a success message would appear too, in a
-        # different colour — so a banner that carries SUCCESS_TEXT is not a
-        # refusal, whichever of the two locators woke the wait above.
+        said = await self._site_error(ORDER_NOTICE)
+        # A confirmation arrives through this same toast, in a different
+        # colour, so one carrying SUCCESS_TEXT is not a refusal — whichever of
+        # the two locators woke the wait above. Getting this backwards is the
+        # expensive direction: OrderRefused is final, but every other failure
+        # is retried, so calling a successful order a plain failure is what
+        # would send it a second time.
         if said and SUCCESS_TEXT not in said:
             await self._capture_failure("order_refused")
             await self._save_page_html()
-            raise BrokerError(f"the order was refused — the site says: {said}")
+            raise OrderRefused(f"the order was refused — the site says: {said}")
 
         return f"submitted-{order.id}"
 

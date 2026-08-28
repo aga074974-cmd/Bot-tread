@@ -9,6 +9,16 @@ class BrokerError(Exception):
     """Raised when the broker rejects login or an order."""
 
 
+class OrderRefused(BrokerError):
+    """The broker read the order and turned it down in as many words — outside
+    trading hours, not enough buying power. Its own message is the message.
+
+    Separate from BrokerError because the scheduler retries a failure, and this
+    is not a failure: it is an answer. Retrying it would re-send an order the
+    broker has already ruled on, which is pointless when the refusal is real
+    and dangerous if it ever is not."""
+
+
 class BrokerClient(ABC):
     """Interface every broker connector must implement.
 
