@@ -208,19 +208,20 @@
   <h2>سفارش جدید</h2>
   <form method="post" action="/orders">
     <label>نماد</label>
-    <input type="text" name="symbol" required placeholder="مثلاً دارونو">
+    <input type="text" name="symbol" required placeholder="مثلاً دارونو"
+           value="{{ kept_symbol }}">
 
     <div class="row">
       <div>
         <label>نوع</label>
         <select name="side">
-          <option value="buy">خرید</option>
-          <option value="sell">فروش</option>
+          <option value="buy" {{ 'selected' if kept_side != 'sell' }}>خرید</option>
+          <option value="sell" {{ 'selected' if kept_side == 'sell' }}>فروش</option>
         </select>
       </div>
       <div>
         <label>تعداد</label>
-        <input type="number" name="quantity" min="1" required>
+        <input type="number" name="quantity" min="1" required value="{{ kept_quantity }}">
       </div>
     </div>
 

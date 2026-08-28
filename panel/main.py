@@ -257,6 +257,16 @@ async def dashboard(request: Request):
     current_year = current_jalali_year()
     today_year, today_month, today_day = today_jalali_ymd()
     now_time = datetime.now(TEHRAN_TZ).strftime("%H:%M")
+
+    # What was typed into the form when it was turned away, so the answer to a
+    # bad time is "change the time", not "type the whole thing again". Popped,
+    # so it fills the form once and a later visit gets a blank one.
+    kept = request.session.pop("form", None) or {}
+    if kept:
+        today_year = kept.get("jalali_year", today_year)
+        today_month = kept.get("jalali_month", today_month)
+        today_day = kept.get("jalali_day", today_day)
+        now_time = kept.get("time", now_time)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -271,6 +281,9 @@ async def dashboard(request: Request):
             "today_month": today_month,
             "today_day": today_day,
             "now_time": now_time,
+            "kept_symbol": kept.get("symbol", ""),
+            "kept_side": kept.get("side", "buy"),
+            "kept_quantity": kept.get("quantity", ""),
             "session_valid": session_status["valid"],
             "manual_login_required": session_status["consecutive_failures"] >= MANUAL_LOGIN_THRESHOLD,
         },
@@ -493,6 +506,16 @@ async def create_order(
     if not require_auth(request):
         return RedirectResponse("/login", status_code=303)
 
+    submitted = {
+        "symbol": symbol.strip(),
+        "side": side,
+        "quantity": quantity,
+        "jalali_year": jalali_year,
+        "jalali_month": jalali_month,
+        "jalali_day": jalali_day,
+        "time": time,
+    }
+
     try:
         date = jalali_to_gregorian_str(jalali_year, jalali_month, jalali_day)
         scheduled_at = parse_tehran_datetime(f"{date} {time}")
@@ -506,6 +529,7 @@ async def create_order(
     except (ValueError, KeyError) as exc:
         request.session["flash"] = f"ورودی نامعتبر: {exc}"
         request.session["flash_error"] = True
+        request.session["form"] = submitted
         return RedirectResponse("/", status_code=303)
 
     # A time that has gone by, or is this same minute, is refused here rather
@@ -517,6 +541,7 @@ async def create_order(
     if scheduled_at < this_minute + ORDER_MIN_LEAD:
         request.session["flash"] = "وقت سفارش گذشته — زمان دیگری انتخاب کنید."
         request.session["flash_error"] = True
+        request.session["form"] = submitted
         return RedirectResponse("/", status_code=303)
 
     await store.insert(order)
