@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>راهنمای نصب Bot-tread</title>
+<style>
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0}
+  img{max-width:100%}
+  [hidden]{display:none!important}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#f5f8f4; --surface:#ffffff; --surface-2:#edf1ea; --line:#dae1d6; --line-soft:#e7ebe2;
+  --ink:#101a13; --muted:#586657; --faint:#7f8d7e;
+  --accent:#15704a; --accent-ink:#ffffff; --accent-soft:#e2f0e8; --accent-line:#bcdcc9;
+  --warn:#8a5900; --warn-soft:#fbf1dc; --warn-line:#e8d09c;
+  --danger:#a63527; --danger-soft:#fbe9e6; --danger-line:#efc3bb;
+  --code-bg:#0c1410; --code-ink:#e3ece5; --code-line:#20302a; --code-dim:#7f9689;
+  --measure:34rem; --radius:14px; --radius-sm:9px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --ground:#0b1120; --surface:#111a2b; --surface-2:#0d1626; --line:#22304a; --line-soft:#1a2437;
+  --ink:#e7eef7; --muted:#94a5bd; --faint:#75879f;
+  --accent:#4ade80; --accent-ink:#04240f; --accent-soft:#11291d; --accent-line:#1f4633;
+  --warn:#e6b74e; --warn-soft:#241d0d; --warn-line:#4a3a12;
+  --danger:#f39184; --danger-soft:#2a1512; --danger-line:#4d221c;
+  --code-bg:#060c15; --code-ink:#dae6f2; --code-line:#1b2740; --code-dim:#6d8199;
+}}
+:root[data-theme="dark"]{
+  --ground:#0b1120; --surface:#111a2b; --surface-2:#0d1626; --line:#22304a; --line-soft:#1a2437;
+  --ink:#e7eef7; --muted:#94a5bd; --faint:#75879f;
+  --accent:#4ade80; --accent-ink:#04240f; --accent-soft:#11291d; --accent-line:#1f4633;
+  --warn:#e6b74e; --warn-soft:#241d0d; --warn-line:#4a3a12;
+  --danger:#f39184; --danger-soft:#2a1512; --danger-line:#4d221c;
+  --code-bg:#060c15; --code-ink:#dae6f2; --code-line:#1b2740; --code-dim:#6d8199;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:'Vazirmatn', system-ui, 'Segoe UI', Tahoma, sans-serif;
+  font-size:16px; line-height:1.85; -webkit-text-size-adjust:100%;
+}
+.page{
+  direction:rtl; max-width:var(--measure); margin:0 auto;
+  padding:2.2rem 1.05rem calc(4rem + env(safe-area-inset-bottom));
+  display:flex; flex-direction:column; gap:2.4rem;
+}
+
+/* ---------- header ---------- */
+.masthead{display:flex; flex-direction:column; gap:0.75rem}
+.eyebrow{
+  font-size:0.72rem; font-weight:700; letter-spacing:0.14em; color:var(--accent);
+  text-transform:uppercase;
+}
+h1{
+  font-size:clamp(1.85rem, 8vw, 2.5rem); font-weight:900; line-height:1.25;
+  margin:0; text-wrap:balance; letter-spacing:-0.01em;
+}
+.standfirst{margin:0; color:var(--muted); font-size:1.02rem}
+.stamps{
+  display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.35rem;
+}
+.stamp{
+  font-family:'JetBrains Mono', ui-monospace, monospace; direction:ltr;
+  font-size:0.7rem; padding:0.2rem 0.55rem; border-radius:999px;
+  border:1px solid var(--line); color:var(--muted); background:var(--surface);
+}
+
+/* ---------- shared blocks ---------- */
+section{display:flex; flex-direction:column; gap:0.9rem; scroll-margin-top:1rem}
+h2{
+  font-size:1.28rem; font-weight:800; margin:0; line-height:1.4;
+  display:flex; align-items:baseline; gap:0.55rem; text-wrap:balance;
+}
+h3{font-size:1rem; font-weight:700; margin:0.4rem 0 0; color:var(--ink)}
+p{margin:0}
+a{color:var(--accent); text-underline-offset:3px}
+strong{font-weight:700}
+ul,ol{margin:0; padding-inline-start:1.25rem; display:flex; flex-direction:column; gap:0.45rem}
+li::marker{color:var(--faint)}
+code:not(pre code){
+  font-family:'JetBrains Mono', ui-monospace, monospace; direction:ltr; unicode-bidi:isolate;
+  font-size:0.85em; background:var(--surface-2); border:1px solid var(--line-soft);
+  border-radius:5px; padding:0.05em 0.35em;
+}
+
+.step-no{
+  flex:none; display:inline-grid; place-items:center; width:1.85rem; height:1.85rem;
+  border-radius:50%; background:var(--accent-soft); border:1px solid var(--accent-line);
+  color:var(--accent); font-size:0.85rem; font-weight:800; align-self:center;
+}
+
+/* ---------- contents ---------- */
+.toc{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  padding:1rem 1.1rem; display:flex; flex-direction:column; gap:0.55rem;
+}
+.toc-title{font-size:0.74rem; font-weight:700; letter-spacing:0.12em; color:var(--faint)}
+.toc ol{padding-inline-start:0; list-style:none; gap:0}
+.toc li{border-top:1px solid var(--line-soft)}
+.toc li:first-child{border-top:0}
+.toc a{
+  display:flex; align-items:center; gap:0.6rem; padding:0.5rem 0.1rem;
+  text-decoration:none; color:var(--ink); font-size:0.94rem; min-height:40px;
+}
+.toc a:hover{color:var(--accent)}
+.toc .n{
+  font-family:'JetBrains Mono', monospace; font-size:0.72rem; color:var(--faint);
+  min-width:1.6rem; text-align:center;
+}
+
+/* ---------- terminal ---------- */
+.cmd{
+  position:relative; background:var(--code-bg); border:1px solid var(--code-line);
+  border-radius:var(--radius-sm); overflow:hidden;
+}
+.cmd pre{
+  margin:0; padding:0.85rem 0.9rem 0.85rem 3.4rem; direction:ltr; text-align:left;
+  overflow-x:auto; font-family:'JetBrains Mono', ui-monospace, monospace;
+  font-size:0.82rem; line-height:1.75; color:var(--code-ink); white-space:pre;
+}
+.cmd pre::before{content:'$ '; color:var(--code-dim)}
+.cmd.plain pre::before{content:''}
+.copy{
+  position:absolute; top:0.45rem; left:0.45rem; min-width:2.4rem; height:2rem;
+  border:1px solid var(--code-line); background:rgba(255,255,255,0.06); color:var(--code-dim);
+  border-radius:7px; font-family:'Vazirmatn', sans-serif; font-size:0.72rem; font-weight:500;
+  cursor:pointer; padding:0 0.5rem; transition:color .15s, border-color .15s, background .15s;
+}
+.copy:hover{color:var(--code-ink); border-color:var(--code-dim)}
+.copy:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.copy[data-done="1"]{color:#4ade80; border-color:#1f4633; background:rgba(74,222,128,0.1)}
+
+/* ---------- callouts ---------- */
+.note{
+  border-inline-start:3px solid var(--accent); background:var(--accent-soft);
+  border-radius:0 var(--radius-sm) var(--radius-sm) 0;
+  padding:0.8rem 0.95rem; display:flex; flex-direction:column; gap:0.4rem; font-size:0.94rem;
+}
+.note.warn{border-color:var(--warn); background:var(--warn-soft)}
+.note.danger{border-color:var(--danger); background:var(--danger-soft)}
+.note .tag{
+  font-size:0.7rem; font-weight:800; letter-spacing:0.08em; color:var(--accent);
+}
+.note.warn .tag{color:var(--warn)}
+.note.danger .tag{color:var(--danger)}
+
+/* ---------- tables ---------- */
+.scroller{overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:0.9rem; min-width:23rem}
+th,td{padding:0.6rem 0.75rem; text-align:right; border-top:1px solid var(--line-soft); vertical-align:top}
+thead th{
+  border-top:0; background:var(--surface-2); font-size:0.75rem; font-weight:700;
+  letter-spacing:0.05em; color:var(--muted); white-space:nowrap;
+}
+td:first-child{font-weight:600}
+td code{white-space:nowrap}
+
+/* ---------- file tree ---------- */
+.tree{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-sm);
+  padding:0.9rem; overflow-x:auto;
+}
+.tree pre{
+  margin:0; direction:ltr; text-align:left; font-family:'JetBrains Mono', monospace;
+  font-size:0.75rem; line-height:1.9; color:var(--muted); white-space:pre;
+}
+.tree b{color:var(--ink); font-weight:500}
+
+/* ---------- progress ---------- */
+.done-row{display:flex; justify-content:flex-start; margin-top:0.2rem}
+.done{
+  display:inline-flex; align-items:center; gap:0.45rem; min-height:40px;
+  background:none; border:0; padding:0.2rem 0; cursor:pointer;
+  font-family:inherit; font-size:0.85rem; color:var(--faint);
+}
+.done .box{
+  width:1.15rem; height:1.15rem; border-radius:5px; border:1.5px solid var(--line);
+  display:grid; place-items:center; background:var(--surface); transition:all .15s;
+}
+.done .box svg{width:0.8rem; height:0.8rem; opacity:0; color:var(--accent-ink)}
+.done[aria-pressed="true"]{color:var(--accent)}
+.done[aria-pressed="true"] .box{background:var(--accent); border-color:var(--accent)}
+.done[aria-pressed="true"] .box svg{opacity:1}
+.done:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:6px}
+
+footer{
+  border-top:1px solid var(--line); padding-top:1.3rem; color:var(--muted); font-size:0.9rem;
+  display:flex; flex-direction:column; gap:0.8rem;
+}
+@media (prefers-reduced-motion: reduce){*{transition:none !important}}
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">کارگزاری مفید · ربات سفارش</div>
+    <h1>راهنمای نصب صفر تا صد</h1>
+    <p class="standfirst">
+      از یک سرور خالی تا پنلی که روی گوشی‌ات باز می‌شود و سفارش می‌فرستد.
+      هیچ دانش فنی فرض نشده — هر دستور را جدا کپی کن، بزن، بعد سراغ بعدی برو.
+    </p>
+    <div class="stamps">
+      <span class="stamp">Ubuntu 22.04 / 24.04</span>
+      <span class="stamp">Python 3.11+</span>
+      <span class="stamp">~۳۰ دقیقه</span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="فهرست مراحل">
+    <div class="toc-title">مسیر نصب</div>
+    <ol>
+      <li><a href="#s0"><span class="n">۰</span> چه چیزهایی لازم داری</a></li>
+      <li><a href="#s1"><span class="n">۱</span> وصل شدن به سرور</a></li>
+      <li><a href="#s2"><span class="n">۲</span> تنظیم ساعت سرور</a></li>
+      <li><a href="#s3"><span class="n">۳</span> نصب بسته‌های سیستمی</a></li>
+      <li><a href="#s4"><span class="n">۴</span> گرفتن کد پروژه</a></li>
+      <li><a href="#s5"><span class="n">۵</span> محیط پایتون</a></li>
+      <li><a href="#s6"><span class="n">۶</span> نصب مرورگر</a></li>
+      <li><a href="#s7"><span class="n">۷</span> فایل تنظیمات <code>.env</code></a></li>
+      <li><a href="#s8"><span class="n">۸</span> کاربر و دسترسی‌ها</a></li>
+      <li><a href="#s9"><span class="n">۹</span> سرویس دائمی</a></li>
+      <li><a href="#s10"><span class="n">۱۰</span> باز کردن پورت</a></li>
+      <li><a href="#s11"><span class="n">۱۱</span> اولین ورود به پنل</a></li>
+      <li><a href="#s12"><span class="n">۱۲</span> ورود به حساب مفید</a></li>
+      <li><a href="#s13"><span class="n">۱۳</span> تست، بعد حالت واقعی</a></li>
+      <li><a href="#update"><span class="n">↻</span> به‌روزرسانی روزمره</a></li>
+      <li><a href="#daily"><span class="n">◆</span> کار روزمره با پنل</a></li>
+      <li><a href="#errors"><span class="n">!</span> پیام‌های خطا</a></li>
+      <li><a href="#fix"><span class="n">?</span> عیب‌یابی</a></li>
+      <li><a href="#risk"><span class="n">⚠</span> نکات ریسک</a></li>
+    </ol>
+  </nav>
+
+  <section id="s0">
+    <h2><span class="step-no">۰</span> چه چیزهایی لازم داری</h2>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>چیز</th><th>توضیح</th></tr></thead>
+        <tbody>
+          <tr><td>سرور مجازی (VPS)</td><td>اوبونتو ۲۲.۰۴ یا ۲۴.۰۴ — حداقل <strong>۲ گیگ رم</strong> و ۲۰ گیگ فضا. با ۱ گیگ، مرورگر وسط کار کشته می‌شود.</td></tr>
+          <tr><td>دسترسی root</td><td>یوزر <code>root</code> و رمزش، یا یک یوزر با <code>sudo</code>.</td></tr>
+          <tr><td>حساب مفید</td><td>نام کاربری و رمز ایزی‌تریدر.</td></tr>
+          <tr><td>برنامه‌ی SSH</td><td>روی گوشی: Termius یا JuiceSSH.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <span class="tag">چرا سرور ایرانی</span>
+      <p>سایت مفید از بیرون ایران معمولاً باز نمی‌شود. سرور را ایران بگیر، وگرنه ربات مدام خطای «سایت در دسترس نیست» می‌دهد.</p>
+    </div>
+  </section>
+
+  <section id="s1">
+    <h2><span class="step-no">۱</span> وصل شدن به سرور</h2>
+    <p>از برنامه‌ی SSH گوشی وصل شو — به‌جای <code>IP-سرور</code> آی‌پی خودت را بگذار. از اینجا به بعد همه‌ی دستورها داخل همین ترمینال زده می‌شوند.</p>
+    <div class="cmd"><pre>ssh root@IP-سرور</pre></div>
+  </section>
+
+  <section id="s2">
+    <h2><span class="step-no">۲</span> تنظیم ساعت سرور</h2>
+    <div class="note warn">
+      <span class="tag">این مرحله را رد نکن</span>
+      <p>زمان‌بندی سفارش‌ها روی ساعت سیستم است. ساعتِ عقب یعنی سفارشِ دیر.</p>
+    </div>
+    <div class="cmd"><pre>timedatectl set-timezone Asia/Tehran</pre></div>
+    <div class="cmd"><pre>timedatectl set-ntp true</pre></div>
+    <div class="cmd"><pre>timedatectl</pre></div>
+    <p>خروجی باید ساعت درست تهران و <code>System clock synchronized: yes</code> را نشان بدهد.</p>
+  </section>
+
+  <section id="s3">
+    <h2><span class="step-no">۳</span> نصب بسته‌های سیستمی</h2>
+    <div class="cmd"><pre>apt update</pre></div>
+    <div class="cmd"><pre>apt install -y python3 python3-venv python3-pip git tzdata</pre></div>
+    <h3>سه بسته‌ی مخصوص «ورود دستی»</h3>
+    <p>این‌ها آن صفحه‌ای را ممکن می‌کنند که مرورگرِ داخل سرور را روی گوشی‌ات نشان می‌دهد تا خودت رمز و کد پیامکی را وارد کنی:</p>
+    <div class="cmd"><pre>apt install -y xvfb x11vnc novnc</pre></div>
+    <div class="note warn">
+      <span class="tag">نصبشان کن</span>
+      <p>بدون این سه بسته بقیه‌ی پنل کار می‌کند، ولی صفحه‌ی «ورود دستی» بالا نمی‌آید. روزی که رمزت عوض شود یا کارگزاری کد پیامکی بخواهد، بدون آن صفحه گیر می‌کنی.</p>
+    </div>
+  </section>
+
+  <section id="s4">
+    <h2><span class="step-no">۴</span> گرفتن کد پروژه</h2>
+    <div class="cmd"><pre>mkdir -p /opt/mofid-bot</pre></div>
+    <div class="cmd"><pre>git clone -b claude/relaxed-cori-6p65ae https://github.com/aga074974-cmd/Bot-tread.git /opt/mofid-bot</pre></div>
+    <div class="cmd"><pre>cd /opt/mofid-bot</pre></div>
+    <p><code>claude/relaxed-cori-6p65ae</code> اسم شاخه‌ای است که تغییرات روی آن انجام می‌شود؛ هر آپدیت جدید روی همین می‌آید.</p>
+  </section>
+
+  <section id="s5">
+    <h2><span class="step-no">۵</span> محیط پایتون</h2>
+    <div class="cmd"><pre>python3 -m venv /opt/mofid-bot/.venv</pre></div>
+    <div class="cmd"><pre>/opt/mofid-bot/.venv/bin/pip install --upgrade pip</pre></div>
+    <div class="cmd"><pre>/opt/mofid-bot/.venv/bin/pip install -r /opt/mofid-bot/requirements.txt</pre></div>
+    <p>اگر <code>pip</code> وسط دانلود قطع شد، همان دستور را دوباره بزن — ادامه را از همان‌جا می‌گیرد. اگر باز هم نشد، یک میرور PyPI ایرانی روی سرور تنظیم کن.</p>
+  </section>
+
+  <section id="s6">
+    <h2><span class="step-no">۶</span> نصب مرورگر</h2>
+    <p>ربات یک مرورگر واقعی (Chromium) را کنترل می‌کند. آن را در مسیر مشترک می‌گذاریم تا کاربرِ سرویس هم پیدایش کند:</p>
+    <div class="cmd"><pre>export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers</pre></div>
+    <div class="cmd"><pre>/opt/mofid-bot/.venv/bin/playwright install --with-deps chromium</pre></div>
+    <p>اگر دانلود با خطای <strong>۴۰۳</strong> خورد، اول این را بزن و بعد دستور بالا را تکرار کن:</p>
+    <div class="cmd"><pre>export PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright</pre></div>
+  </section>
+
+  <section id="s7">
+    <h2><span class="step-no">۷</span> فایل تنظیمات <code>.env</code></h2>
+    <div class="cmd"><pre>cp /opt/mofid-bot/.env.example /opt/mofid-bot/.env</pre></div>
+    <div class="cmd"><pre>nano /opt/mofid-bot/.env</pre></div>
+    <p>ذخیره: <code>Ctrl+O</code> بعد <code>Enter</code> — خروج: <code>Ctrl+X</code>.</p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>کلید</th><th>چه بگذاری</th></tr></thead>
+        <tbody>
+          <tr><td><code>MOFID_USERNAME</code></td><td>نام کاربری ایزی‌تریدر</td></tr>
+          <tr><td><code>MOFID_PASSWORD</code></td><td>رمز ایزی‌تریدر</td></tr>
+          <tr><td><code>PANEL_PASSWORD</code></td><td>رمزی که خودت می‌سازی، برای ورود به پنل. طولانی بگذار.</td></tr>
+          <tr><td><code>SESSION_SECRET</code></td><td>یک رشته‌ی تصادفی بلند. خالی بماند، با هر ری‌استارت از پنل بیرون می‌افتی.</td></tr>
+          <tr><td><code>DRY_RUN</code></td><td>فعلاً <code>true</code> — حالت تمرین، سفارش واقعی نمی‌رود.</td></tr>
+          <tr><td><code>HEADLESS</code></td><td><code>true</code> بماند.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>برای ساختن <code>SESSION_SECRET</code>، این را بزن و خروجی‌اش را کپی کن:</p>
+    <div class="cmd"><pre>openssl rand -hex 32</pre></div>
+    <h3>بقیه‌ی کلیدها یعنی چه</h3>
+    <ul>
+      <li><code>GRACE_PERIOD_SECONDS=120</code> — اگر سرور ری‌استارت شد و سفارش تا این چند ثانیه عقب افتاد، باز هم اجرا می‌شود؛ بیشتر از آن «اجرا نشد» می‌خورد.</li>
+      <li><code>RETRY_DEADLINE_SECONDS=90</code> — بعد از این چند ثانیه از زمان سفارش، تلاش تازه شروع نمی‌شود. سفارشی که ۸ دقیقه دیر برود، دیگر همان سفارش نیست.</li>
+      <li><code>MAX_RETRIES=5</code> — حداکثر تعداد تلاش.</li>
+      <li><code>SCREENSHOT_RETENTION_DAYS=3</code> — عکس‌های هر سفارش بعد از ۳ روز پاک می‌شوند.</li>
+      <li><code>ORDER_HISTORY_RETENTION_DAYS=30</code> — سفارش‌های قدیمی‌تر از ۳۰ روز از تاریخچه پاک می‌شوند.</li>
+      <li><code>STORAGE_STATE_PATH</code> — جایی که نشستِ ورود ذخیره می‌شود.</li>
+    </ul>
+    <p>اگر <code>novnc</code> را جای دیگری نصب کردی (پیش‌فرض <code>/usr/share/novnc</code>)، این خط را هم اضافه کن:</p>
+    <div class="cmd plain"><pre>NOVNC_DIR=/مسیر/واقعی/novnc</pre></div>
+    <div class="note danger">
+      <span class="tag">مواظب املا باش</span>
+      <p>فقط <code>true</code> و <code>false</code> شناخته می‌شوند. اگر <code>fasle</code> بنویسی، ربات آن را <code>true</code> می‌خواند (یعنی حالت تمرین) و یک هشدار در لاگ می‌نویسد. غلط املایی سفارش واقعیِ ناخواسته نمی‌سازد، ولی ممکن است فکر کنی زنده‌ای و نباشی — بعد از تغییر این خط لاگ را چک کن.</p>
+    </div>
+  </section>
+
+  <section id="s8">
+    <h2><span class="step-no">۸</span> کاربر و دسترسی‌ها</h2>
+    <p>سرویس با یک کاربر بی‌دسترسی اجرا می‌شود، نه با root:</p>
+    <div class="cmd"><pre>useradd -r -s /usr/sbin/nologin mofidbot</pre></div>
+    <div class="cmd"><pre>mkdir -p /opt/mofid-bot/logs</pre></div>
+    <div class="cmd"><pre>chown -R mofidbot:mofidbot /opt/mofid-bot /opt/pw-browsers</pre></div>
+    <div class="cmd"><pre>chmod 600 /opt/mofid-bot/.env</pre></div>
+    <div class="note">
+      <span class="tag">چرا مالکش mofidbot باشد</span>
+      <p><code>.env</code> رمز حساب کارگزاری‌ات را دارد؛ <code>600</code> یعنی فقط صاحبش بخواندش. مالکش هم باید <code>mofidbot</code> باشد، چون وقتی از پنل تیک «ذخیره برای دفعات بعد» را می‌زنی، خودِ پنل این فایل را بازنویسی می‌کند.</p>
+    </div>
+  </section>
+
+  <section id="s9">
+    <h2><span class="step-no">۹</span> سرویس دائمی</h2>
+    <p>با این کار پنل با بستن SSH قطع نمی‌شود و بعد از ری‌استارت سرور هم خودش بالا می‌آید.</p>
+    <div class="cmd"><pre>cp /opt/mofid-bot/systemd/mofid-panel.service /etc/systemd/system/</pre></div>
+    <div class="cmd"><pre>systemctl daemon-reload</pre></div>
+    <div class="cmd"><pre>systemctl enable --now mofid-panel</pre></div>
+    <div class="cmd"><pre>systemctl status mofid-panel</pre></div>
+    <p>باید <code>active (running)</code> باشد. برای دیدن لاگ زنده (خروج با <code>Ctrl+C</code>):</p>
+    <div class="cmd"><pre>journalctl -u mofid-panel -f</pre></div>
+    <div class="note warn">
+      <span class="tag">سرویس دوم را نصب نکن</span>
+      <p><code>mofid-bot.service</code> مالِ حالت قدیمیِ <code>orders.yaml</code> است. اگر از پنل استفاده می‌کنی نصبش نکن — هر دو با هم یعنی هر سفارش دو بار.</p>
+    </div>
+  </section>
+
+  <section id="s10">
+    <h2><span class="step-no">۱۰</span> باز کردن پورت</h2>
+    <div class="cmd"><pre>ufw allow 8080/tcp</pre></div>
+    <div class="cmd"><pre>ufw status</pre></div>
+    <p>اگر هاستت پنل فایروال جدا دارد، از همان‌جا هم پورت <code>8080</code> را باز کن.</p>
+  </section>
+
+  <section id="s11">
+    <h2><span class="step-no">۱۱</span> اولین ورود به پنل</h2>
+    <p>از مرورگر گوشی برو به این آدرس و رمزی که در <code>PANEL_PASSWORD</code> گذاشتی را وارد کن:</p>
+    <div class="cmd plain"><pre>http://IP-سرور:8080</pre></div>
+    <p>باید صفحه‌ی «پنل ربات» با ربات متحرکِ بالای صفحه بیاید.</p>
+  </section>
+
+  <section id="s12">
+    <h2><span class="step-no">۱۲</span> ورود به حساب مفید</h2>
+    <p>وسط هدر پنل یک <strong>چراغ گرد</strong> هست: قرمز یعنی نشستِ ورود معتبر نیست (اولین بار همین‌طور است)، سبز یعنی ربات وارد حساب هست و می‌تواند سفارش بفرستد.</p>
+    <p>یک بار روی چراغ بزن؛ خودش با نام‌کاربری/رمزِ <code>.env</code> تلاش می‌کند. اگر نشد (کد پیامکی، کپچا، رمز عوض‌شده) زیر چراغ لینک <strong>«ورود دستی»</strong> هست:</p>
+    <ol>
+      <li>روی «ورود دستی» بزن.</li>
+      <li>مرورگرِ داخل سرور را روی گوشی‌ات می‌بینی — همان صفحه‌ی ورود مفید.</li>
+      <li>خودت نام کاربری، رمز و کد پیامکی را وارد کن.</li>
+      <li>به‌محض ورود، صفحه خودش می‌بندد و چراغ سبز می‌شود.</li>
+      <li>وقتی از صفحه بیرون بروی، مرورگر سرور هم خودکار بسته می‌شود.</li>
+    </ol>
+    <div class="note danger">
+      <span class="tag">دو کار که ربات هرگز نمی‌کند</span>
+      <p>ربات کپچا حل نمی‌کند و «اقرارنامه و بیانیه ریسک» را امضا نمی‌کند. این دو کارِ خودِ صاحب حساب است — از همین صفحه‌ی ورود دستی انجامشان بده.</p>
+    </div>
+    <p>بعد از ورود موفق، نشست در <code>auth_state.json</code> ذخیره می‌شود. اگر رمزت را عوض کردی، این فایل را پاک کن تا از نو وارد شود:</p>
+    <div class="cmd"><pre>rm -f /opt/mofid-bot/auth_state.json</pre></div>
+  </section>
+
+  <section id="s13">
+    <h2><span class="step-no">۱۳</span> تست، بعد حالت واقعی</h2>
+    <p>تا وقتی <code>DRY_RUN=true</code> است، ربات <strong>واقعاً وارد می‌شود، نماد را باز می‌کند و فرم را پر می‌کند، ولی دکمه‌ی نهایی ارسال را نمی‌زند</strong> — یعنی تست بی‌خطر.</p>
+    <ol>
+      <li><strong>در ساعت معاملات بازار</strong> یک سفارش تمرینی برای چند دقیقه‌ی بعد ثبت کن.</li>
+      <li>وقتی وضعیتش عوض شد، کنارش آیکون ▶ می‌آید — بزن تا گالری عکس‌ها باز شود.</li>
+      <li>عکس <code>..._quantity_filled</code> را نگاه کن: باید تعداد را درست پر کرده باشد.</li>
+      <li>اگر جایی گیر کرد، آخرین عکس نشان می‌دهد <em>کجا</em> و فایل <code>page.html</code> نشان می‌دهد <em>چرا</em>. هر دو از همان گالری قابل دانلودند — بفرستشان تا اصلاح شود.</li>
+    </ol>
+    <div class="note warn">
+      <span class="tag">حتماً در ساعت بازار تست کن</span>
+      <p>شب، خودِ اپ می‌نویسد «خارج از ساعت معاملات!» و ممکن است کیبورد عددی اصلاً باز نشود؛ آن‌وقت خطای طبیعی را با خرابیِ ربات اشتباه می‌گیری.</p>
+    </div>
+    <p>فقط وقتی عکس‌ها درست بودند، <code>DRY_RUN=true</code> را به <code>false</code> عوض کن و سرویس را ری‌استارت کن:</p>
+    <div class="cmd"><pre>nano /opt/mofid-bot/.env</pre></div>
+    <div class="cmd"><pre>systemctl restart mofid-panel</pre></div>
+  </section>
+
+  <section id="update">
+    <h2>به‌روزرسانی روزمره</h2>
+    <p>هر وقت تغییر جدیدی آمد، همین سه خط:</p>
+    <div class="cmd"><pre>cd /opt/mofid-bot</pre></div>
+    <div class="cmd"><pre>git pull origin claude/relaxed-cori-6p65ae</pre></div>
+    <div class="cmd"><pre>systemctl restart mofid-panel</pre></div>
+    <p>اگر <code>git pull</code> گفت <code>dubious ownership</code>، یک‌بار این را بزن و دوباره امتحان کن:</p>
+    <div class="cmd"><pre>git config --global --add safe.directory /opt/mofid-bot</pre></div>
+    <p>اگر آپدیت کتابخانه‌ی جدیدی داشت (به‌ندرت)، بعد از <code>git pull</code> این را هم بزن:</p>
+    <div class="cmd"><pre>/opt/mofid-bot/.venv/bin/pip install -r /opt/mofid-bot/requirements.txt</pre></div>
+  </section>
+
+  <section id="daily">
+    <h2>کار روزمره با پنل</h2>
+    <ul>
+      <li><strong>ثبت سفارش:</strong> نماد، خرید/فروش، تعداد، نوع سفارش، تاریخ و ساعت.</li>
+      <li><strong>زمان باید دست‌کم یک دقیقه جلوتر از الان باشد.</strong> اگر گذشته باشد پیام «وقت سفارش گذشته» می‌آید و آنچه نوشته بودی <em>پاک نمی‌شود</em> — فقط ساعت را عوض کن. این قید فقط برای امروز است.</li>
+      <li><strong>تعداد خالی:</strong> کنار عنوان «تعداد» یک <code>!</code> قرمز و «تعداد را وارد کنید» می‌آید و با شروع تایپ محو می‌شود.</li>
+      <li><strong>سفارش‌های در انتظار</strong> همیشه بالای صفحه می‌مانند تا بتوانی لغوشان کنی.</li>
+      <li><strong>لغو:</strong> سفارشِ لغوشده کلاً حذف می‌شود و در تاریخچه نمی‌ماند.</li>
+      <li><strong>تاریخچه:</strong> فقط سفارش‌های تمام‌شده — سه‌تای آخر در صفحه‌ی اصلی، بقیه در <code>/history</code>.</li>
+      <li><strong>خطا:</strong> روی وضعیت «ناموفق» بزن تا پیام فارسی سه ثانیه ظاهر شود.</li>
+      <li><strong>عکس‌ها:</strong> آیکون ▶ کنار وضعیت → گالری، قابل دیدن و دانلود.</li>
+      <li><strong>خروج از پنل:</strong> آدرس <code>/logout</code>.</li>
+    </ul>
+  </section>
+
+  <section id="errors">
+    <h2>پیام‌های خطا یعنی چه</h2>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>پیام</th><th>یعنی چه</th><th>چه کار کنی</th></tr></thead>
+        <tbody>
+          <tr><td>سایت در دسترس نیست</td><td>سرورِ خودِ مفید جواب نمی‌دهد</td><td>کاری از ربات برنمی‌آید؛ بعداً</td></tr>
+          <tr><td>نماد پیدا نشد</td><td>جستجو خالی برگشت</td><td>املای نماد را چک کن — چیزی نرفته</td></tr>
+          <tr><td>اقرارنامه‌ی ریسک</td><td>تا امضای خودت معامله نمی‌شود</td><td>از «ورود دستی» تأییدش کن</td></tr>
+          <tr><td>سفارش رد شد</td><td>خودِ کارگزاری رد کرده</td><td>متن داخل پیام را بخوان</td></tr>
+          <tr><td>ورود ناموفق</td><td>رمز یا کپچا</td><td>از «ورود دستی» وارد شو</td></tr>
+          <tr><td>اجرا نشد</td><td>سفارش خیلی دیر شد</td><td>دوباره ثبتش کن</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <span class="tag">چرا بعضی‌ها تلاش دوباره نمی‌شوند</span>
+      <p>سه مورد اول و «سفارش رد شد» عمداً یک‌بار امتحان می‌شوند: نمادی که وجود ندارد بار دوم به وجود نمی‌آید، و سفارشی که رد شده نباید دوباره برود که یک‌وقت دوتا ثبت نشود.</p>
+    </div>
+  </section>
+
+  <section id="fix">
+    <h2>عیب‌یابی</h2>
+    <p>اول همیشه این دو تا — آخرین خط‌های لاگ معمولاً دقیقاً می‌گویند مشکل چیست:</p>
+    <div class="cmd"><pre>systemctl status mofid-panel</pre></div>
+    <div class="cmd"><pre>journalctl -u mofid-panel -n 50 --no-pager</pre></div>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>علامت</th><th>علت</th><th>درمان</th></tr></thead>
+        <tbody>
+          <tr><td>سرویس بالا نمی‌آید</td><td><code>PANEL_PASSWORD</code> خالی است</td><td>پرش کن و ری‌استارت</td></tr>
+          <tr><td>صفحه باز نمی‌شود</td><td>پورت بسته</td><td><code>ufw allow 8080/tcp</code></td></tr>
+          <tr><td>«ورود دستی» خطا می‌دهد</td><td>xvfb / x11vnc / novnc نیست</td><td>مرحله‌ی ۳</td></tr>
+          <tr><td>صفحه‌ی ورود دستی سیاه است</td><td>مسیر noVNC فرق دارد</td><td><code>NOVNC_DIR</code> در <code>.env</code></td></tr>
+          <tr><td>مرورگر وسط کار می‌میرد</td><td>رم کم</td><td>۲ گیگ یا بیشتر / swap</td></tr>
+          <tr><td>سفارش‌ها دیر اجرا می‌شوند</td><td>ساعت سرور غلط</td><td>مرحله‌ی ۲</td></tr>
+          <tr><td>همه ناموفق با خطای ورود</td><td>نشست باطل شده</td><td>چراغ، بعد «ورود دستی»</td></tr>
+          <tr><td><code>dubious ownership</code></td><td>مالکیت پوشه</td><td><code>safe.directory</code></td></tr>
+          <tr><td>نصب مرورگر خطای ۴۰۳</td><td>دانلود مسدود</td><td>مرحله‌ی ۶، میرور</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>پشتیبان‌گیری</h3>
+    <p>سه چیز در گیت نیستند و با عوض کردن سرور از دست می‌روند: <code>.env</code> (رمزها)، <code>panel.db</code> (همه‌ی سفارش‌ها) و <code>auth_state.json</code> (نشست ورود).</p>
+    <div class="cmd"><pre>tar czf ~/mofid-backup.tar.gz -C /opt/mofid-bot .env panel.db auth_state.json</pre></div>
+  </section>
+
+  <section id="risk">
+    <h2>نکات ریسک — این‌ها را حتماً بخوان</h2>
+    <div class="note danger">
+      <span class="tag">API رسمی نیست</span>
+      <p>ربات دقیقاً کاری را می‌کند که تو با انگشت روی سایت می‌کنی، فقط خودکار. استفاده‌ی خودکار از اپ ریتیل ممکن است با قوانین کارگزاری مفید در تناقض باشد و در بدترین حالت به مسدود شدن حساب برسد. مسئولیتش با توست.</p>
+    </div>
+    <ul>
+      <li><strong>قبل از هر عددی نماد چک می‌شود.</strong> اگر نام روی تیکت با نمادی که خواسته‌ای یکی نبود، سفارش متوقف می‌شود — سفارشِ درست روی نمادِ اشتباه بدترین اتفاق ممکن است.</li>
+      <li><strong>تعداد بعد از پر شدن دوباره خوانده می‌شود</strong> و اگر با خواسته‌ات یکی نبود، ارسال نمی‌شود.</li>
+      <li><strong>پیام موفقیت هنوز روی یک سفارش واقعی تأیید نشده.</strong> اگر ربات گفت آن را نشناخت، الزاماً یعنی سفارش ثبت نشده نیست — خودت در اپ مفید چک کن.</li>
+      <li><strong>پنل روی HTTP است، نه HTTPS.</strong> رمز پنل رمزنگاری‌نشده رد می‌شود؛ رمز طولانی و بی‌ربط بگذار و اگر می‌توانی پورت را فقط به آی‌پی خودت باز کن.</li>
+      <li><strong>هر کسی رمز پنل را داشته باشد می‌تواند از حساب تو سفارش بفرستد.</strong></li>
+      <li>پنل و حالت <code>orders.yaml</code> دو سیستم جدا هستند؛ هم‌زمان اجرایشان نکن.</li>
+    </ul>
+  </section>
+
+  <section id="tree">
+    <h2>ساختار پروژه</h2>
+    <div class="tree"><pre>/opt/mofid-bot
+├── <b>.env</b>                 تنظیمات و رمزها   (در گیت نیست)
+├── <b>panel.db</b>             سفارش‌ها           (در گیت نیست)
+├── <b>auth_state.json</b>      نشست ورود         (در گیت نیست)
+├── <b>main.py</b>              حالت قدیمی orders.yaml
+├── <b>bot/</b>
+│   ├── config.py        خواندن ‎.env
+│   ├── scheduler.py     انتظار تا زمان سفارش + تلاش دوباره
+│   ├── screenshots.py   ذخیره و پاکسازی عکس‌ها
+│   └── broker/
+│       ├── base.py               انواع خطا
+│       └── mofid_playwright.py   کنترل مرورگر روی سایت مفید
+├── <b>panel/</b>
+│   ├── main.py          سرور پنل و آدرس‌ها
+│   ├── db.py            ذخیره‌سازی SQLite
+│   ├── errors.py        ترجمه‌ی خطاها به فارسی
+│   ├── manual_login.py  ورود دستی (Xvfb + x11vnc + noVNC)
+│   └── templates/       صفحه‌های HTML پنل
+├── <b>systemd/</b>            فایل‌های سرویس
+├── <b>tests/</b>              تست‌های خودکار
+└── <b>logs/screenshots/</b>   عکس و page.html هر سفارش</pre></div>
+  </section>
+
+  <footer>
+    <p>اگر جایی گیر کردی، این دو تا تقریباً همیشه کافی‌اند: خروجی
+      <code>journalctl -u mofid-panel -n 50 --no-pager</code>
+      و عکس‌های همان سفارش از گالری پنل.</p>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  var KEY = 'mofid-install-progress';
+
+  function copyText(text, done) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { fallback(text, done); });
+    } else { fallback(text, done); }
+  }
+  function fallback(text, done) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    done(ok);
+  }
+
+  document.querySelectorAll('.cmd').forEach(function (block) {
+    var pre = block.querySelector('pre');
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'copy';
+    btn.textContent = 'کپی';
+    btn.setAttribute('aria-label', 'کپی کردن دستور');
+    btn.addEventListener('click', function () {
+      copyText(pre.textContent, function (ok) {
+        btn.textContent = ok ? 'کپی شد' : 'کپی نشد';
+        btn.dataset.done = ok ? '1' : '0';
+        setTimeout(function () { btn.textContent = 'کپی'; delete btn.dataset.done; }, 1600);
+      });
+    });
+    block.appendChild(btn);
+  });
+
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { state = {}; }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  var check = '<span class="box"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg></span>';
+  document.querySelectorAll('section[id^="s"]').forEach(function (section) {
+    if (!/^s\d+$/.test(section.id)) return;
+    var row = document.createElement('div');
+    row.className = 'done-row';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'done';
+    btn.innerHTML = check + '<span>این مرحله انجام شد</span>';
+    var on = state[section.id] === true;
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.addEventListener('click', function () {
+      on = !on;
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      state[section.id] = on;
+      save();
+    });
+    row.appendChild(btn);
+    section.appendChild(row);
+  });
+})();
+</script>
+</body>
+</html>
